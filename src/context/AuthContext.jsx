@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { 
+import {
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged 
+  onAuthStateChanged
 } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
@@ -22,15 +22,19 @@ export const AuthProvider = ({ children }) => {
   // Login function
   const login = async (email, password) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    
+
     // Fetch user role and department from Firestore
-    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      setUserRole(userData.role);
-      setUserDepartment(userData.department);
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        setUserRole(userData.role);
+        setUserDepartment(userData.department);
+      }
+    } catch (error) {
+      console.warn("Fetched user profile failed (permission issue?):", error);
     }
-    
+
     return userCredential;
   };
 
@@ -43,21 +47,25 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
-      
-      if (user) {
-        // Fetch user role and department
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setUserRole(userData.role);
-          setUserDepartment(userData.department);
+
+      try {
+        if (user) {
+          // Fetch user role and department
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUserRole(userData.role);
+            setUserDepartment(userData.department);
+          }
+        } else {
+          setUserRole(null);
+          setUserDepartment(null);
         }
-      } else {
-        setUserRole(null);
-        setUserDepartment(null);
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
     });
 
     return unsubscribe;

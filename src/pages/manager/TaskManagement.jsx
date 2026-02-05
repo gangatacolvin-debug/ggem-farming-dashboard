@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
   getDocs,
   addDoc,
   deleteDoc,
-  doc 
+  doc,
+  orderBy
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { 
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -25,7 +26,7 @@ import {
   DialogTrigger,
   DialogFooter
 } from '@/components/ui/dialog';
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,7 +34,25 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Plus, Trash2, Calendar, User, ClipboardList } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Calendar,
+  User,
+  ClipboardList,
+  Search,
+  Filter,
+  MoreHorizontal,
+  Clock
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 export default function TaskManagement() {
   const { userDepartment } = useAuth();
@@ -41,6 +60,9 @@ export default function TaskManagement() {
   const [supervisors, setSupervisors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('all');
+
   const [formData, setFormData] = useState({
     checklistName: '',
     checklistType: '',
@@ -57,45 +79,45 @@ export default function TaskManagement() {
     // Fetch tasks
     const tasksQuery = query(
       collection(db, 'tasks'),
-      where('department', '==', userDepartment)
+      where('department', '==', userDepartment),
+      orderBy('createdAt', 'desc')
     );
 
     const unsubscribe = onSnapshot(tasksQuery, async (snapshot) => {
       const tasksData = [];
-      
+
       for (const taskDoc of snapshot.docs) {
         const taskData = { id: taskDoc.id, ...taskDoc.data() };
-        
-        // Fetch supervisor info
-        if (taskData.assignedTo) {
-          const supervisorDoc = await getDocs(
-            query(collection(db, 'users'), where('__name__', '==', taskData.assignedTo))
-          );
-          if (!supervisorDoc.empty) {
-            taskData.supervisorInfo = supervisorDoc.docs[0].data();
-          }
-        }
-        
         tasksData.push(taskData);
       }
 
+      // Sort primarily by date desc
+      tasksData.sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+        return dateB - dateA;
+      });
+
       setTasks(tasksData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching tasks snapshot:", error);
       setLoading(false);
     });
 
-    // Fetch supervisors for assignment
+    // Fetch supervisors
     const fetchSupervisors = async () => {
-      const supervisorsQuery = query(
-        collection(db, 'users'),
-        where('department', '==', userDepartment),
-        where('role', '==', 'supervisor')
-      );
-      const snapshot = await getDocs(supervisorsQuery);
-      const supervisorsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setSupervisors(supervisorsData);
+      try {
+        const supervisorsQuery = query(
+          collection(db, 'users'),
+          where('department', '==', userDepartment),
+          where('role', '==', 'supervisor')
+        );
+        const snapshot = await getDocs(supervisorsQuery);
+        setSupervisors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (err) {
+        console.error("Error fetching supervisors:", err);
+      }
     };
 
     fetchSupervisors();
@@ -107,7 +129,6 @@ export default function TaskManagement() {
     setError('');
     setSuccess('');
 
-    // Validation
     if (!formData.checklistName || !formData.checklistType || !formData.assignedTo || !formData.scheduledDate) {
       setError('Please fill in all required fields');
       return;
@@ -115,7 +136,7 @@ export default function TaskManagement() {
 
     try {
       const scheduledDate = new Date(formData.scheduledDate);
-      
+
       await addDoc(collection(db, 'tasks'), {
         checklistName: formData.checklistName,
         checklistType: formData.checklistType,
@@ -146,9 +167,7 @@ export default function TaskManagement() {
   };
 
   const handleDeleteTask = async (taskId) => {
-    if (!window.confirm('Are you sure you want to delete this task?')) {
-      return;
-    }
+    if (!window.confirm('Are you sure you want to delete this task?')) return;
 
     try {
       await deleteDoc(doc(db, 'tasks', taskId));
@@ -160,138 +179,255 @@ export default function TaskManagement() {
     }
   };
 
-  const getStatusColor = (status) => {
+  const getStatusBadge = (status) => {
     switch (status) {
-      case 'completed':
-        return 'bg-green-500';
-      case 'in-progress':
-        return 'bg-blue-500';
-      case 'pending':
-        return 'bg-gray-500';
-      default:
-        return 'bg-gray-500';
+      case 'completed': return <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200">Completed</Badge>;
+      case 'in-progress': return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200">In Progress</Badge>;
+      case 'pending': return <Badge variant="outline" className="text-gray-600">Pending</Badge>;
+      default: return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-gray-500">Loading tasks...</p>
-      </div>
-    );
-  }
+  const getSupervisorName = (id) => {
+    const sup = supervisors.find(s => s.id === id);
+    return sup ? sup.name : 'Unknown';
+  };
+
+  const getInitials = (name) => {
+    return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '??';
+  };
+
+  // Filter tasks
+  const filteredTasks = tasks.filter(task => {
+    const matchesSearch = task.checklistName.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filterType === 'all' || task.checklistType === filterType;
+    return matchesSearch && matchesType;
+  });
+
+  if (loading) return <div className="p-8 text-center text-gray-500">Loading tasks...</div>;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Page Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Task Management</h1>
-          <p className="text-gray-600 mt-1">Create and assign tasks to your team</p>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Task Management</h1>
+          <p className="text-gray-500 mt-1">Create, assign, and track departmental tasks</p>
         </div>
-        
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-primary">
-              <Plus className="w-4 h-4 mr-2" />
-              Create Task
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Create New Task</DialogTitle>
-              <DialogDescription>
-                Assign a checklist task to a supervisor
-              </DialogDescription>
-            </DialogHeader>
+        <Button onClick={() => setIsDialogOpen(true)} className="shadow-lg shadow-primary/20">
+          <Plus className="w-4 h-4 mr-2" />
+          New Assignment
+        </Button>
+      </div>
 
-            <div className="space-y-4 py-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
+      {/* Filters & Actions */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+          <Input
+            placeholder="Search tasks..."
+            className="pl-9 bg-white"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <Select value={filterType} onValueChange={setFilterType}>
+          <SelectTrigger className="w-[180px] bg-white">
+            <Filter className="w-4 h-4 mr-2 text-gray-500" />
+            <SelectValue placeholder="Filter by Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="milling">Milling Process</SelectItem>
+            <SelectItem value="briquette">Briquette Production</SelectItem>
+            <SelectItem value="hubtransfer">Hub Transfer & Inspection Checklist</SelectItem>
+            <SelectItem value="warehouseclosing">Warehouse Closing & Site Inspection</SelectItem>
+            <SelectItem value="huboffloading">Offloading Rice from Hubs Checklist</SelectItem>
+            <SelectItem value="warehousemaintenance">Warehouse Maintenance Checklist</SelectItem>
+            <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
+            <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
+            <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
 
+          </SelectContent>
+        </Select>
+      </div>
+
+
+      {/* Task List Table */}
+      <Card className="shadow-sm border-0 bg-white">
+        <CardContent className="p-0">
+          <div className="rounded-md border">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-50 text-gray-500 font-medium border-b">
+                <tr>
+                  <th className="px-4 py-3">Task Name</th>
+                  <th className="px-4 py-3">Assigned Supervisor</th>
+                  <th className="px-4 py-3">Schedule</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredTasks.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                      No tasks found. Create a new task to get started.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTasks.map((task) => (
+                    <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${task.status === 'in-progress' ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'}`} />
+                          {task.checklistName}
+                        </div>
+                        <div className="text-xs text-gray-400 pl-4 mt-0.5 capitalize">{task.checklistType}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                              {getInitials(getSupervisorName(task.assignedTo))}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-gray-700">{getSupervisorName(task.assignedTo)}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        <div className="flex flex-col">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {task.scheduledDate?.toDate?.()
+                              ? new Date(task.scheduledDate.toDate()).toLocaleDateString()
+                              : ''}
+                          </span>
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                            <Clock className="w-3 h-3" />
+                            {task.shift} Shift
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {getStatusBadge(task.status)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => navigator.clipboard.writeText(task.id)}>
+                              Copy Task ID
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteTask(task.id)}>
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete Task
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Create Task Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>New Task Assignment</DialogTitle>
+            <DialogDescription>
+              Create a new checklist assignment for a supervisor.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="checklistType">Checklist Type *</Label>
-                <Select 
-                  value={formData.checklistType} 
-                  onValueChange={(value) => {
-                    setFormData({ ...formData, checklistType: value });
-                    // Auto-set checklist name based on type
-                    if (value === 'milling') {
-                      setFormData(prev => ({ ...prev, checklistType: value, checklistName: 'Milling Process Checklist' }));
-                    } else if (value === 'briquette') {
-                      setFormData(prev => ({ ...prev, checklistType: value, checklistName: 'Briquette Production Checklist' }));
-                    }
+                <Label>Type</Label>
+                <Select
+                  value={formData.checklistType}
+                  onValueChange={(val) => {  // ← Also note: it's onValueChange, not onChange for shadcn Select
+                    setFormData(prev => ({
+                      ...prev,
+                      checklistType: val,
+                      checklistName: val === 'milling'
+                        ? 'Milling Process Checklist'
+                        : val === 'briquette'
+                          ? 'Briquette Production Checklist'
+                          : val === 'hubcollection'
+                            ? 'Hub Collection & Offloading Checklist'
+                            : val === 'warehousemaintenance'
+                              ? 'Warehouse Maintenance Checklist'
+                              : val === 'warehouseinventory'
+                                ? 'Warehouse Inventory Audit'
+                                : 'Unknown Checklist'
+                    }));
                   }}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select checklist type" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="milling">Milling Process</SelectItem>
                     <SelectItem value="briquette">Briquette Production</SelectItem>
-                    <SelectItem value="hub-transfer">Hub Transfer & Inspection</SelectItem>
-                    <SelectItem value="warehouse-maintenance">Warehouse Maintenance</SelectItem>
-                    <SelectItem value="offloading">Offloading Rice from Hubs</SelectItem>
-                    <SelectItem value="loading">Loading Produce for Dispatch</SelectItem>
+                    <SelectItem value="hubcollection">Hub Collection & Offloading</SelectItem>
+                    <SelectItem value="warehousemaintenance">Warehouse Maintenance</SelectItem>
+                    <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
+                    <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
+                    <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="space-y-2">
-                <Label htmlFor="checklistName">Checklist Name *</Label>
+                <Label>Task Name</Label>
                 <Input
-                  id="checklistName"
-                  placeholder="Enter checklist name"
                   value={formData.checklistName}
-                  onChange={(e) => setFormData({ ...formData, checklistName: e.target.value })}
+                  onChange={e => setFormData({ ...formData, checklistName: e.target.value })}
                 />
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="assignedTo">Assign to Supervisor *</Label>
-                <Select 
-                  value={formData.assignedTo} 
-                  onValueChange={(value) => setFormData({ ...formData, assignedTo: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select supervisor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {supervisors.length === 0 ? (
-                      <div className="p-2 text-sm text-gray-500">No supervisors available</div>
-                    ) : (
-                      supervisors.map((supervisor) => (
-                        <SelectItem key={supervisor.id} value={supervisor.id}>
-                          {supervisor.name} ({supervisor.email})
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label>Assigned Supervisor</Label>
+              <Select
+                value={formData.assignedTo}
+                onValueChange={(val) => setFormData({ ...formData, assignedTo: val })}
+              >
+                <SelectTrigger><SelectValue placeholder="Select supervisor" /></SelectTrigger>
+                <SelectContent>
+                  {supervisors.map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="scheduledDate">Scheduled Date *</Label>
+                <Label>Date</Label>
                 <Input
-                  id="scheduledDate"
                   type="date"
                   value={formData.scheduledDate}
-                  onChange={(e) => setFormData({ ...formData, scheduledDate: e.target.value })}
+                  onChange={e => setFormData({ ...formData, scheduledDate: e.target.value })}
                 />
               </div>
-
               <div className="space-y-2">
-                <Label htmlFor="shift">Shift *</Label>
-                <Select 
-                  value={formData.shift} 
-                  onValueChange={(value) => setFormData({ ...formData, shift: value })}
+                <Label>Shift</Label>
+                <Select
+                  value={formData.shift}
+                  onValueChange={(val) => setFormData({ ...formData, shift: val })}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select shift" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="day">Day Shift</SelectItem>
                     <SelectItem value="night">Night Shift</SelectItem>
@@ -299,99 +435,14 @@ export default function TaskManagement() {
                 </Select>
               </div>
             </div>
+          </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleCreateTask} className="bg-primary">
-                Create Task
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Success Message */}
-      {success && (
-        <Alert className="bg-green-50 border-green-200">
-          <AlertDescription className="text-green-800">{success}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Tasks List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>All Tasks</CardTitle>
-          <CardDescription>Manage all tasks in your department</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {tasks.length === 0 ? (
-            <div className="text-center py-12">
-              <ClipboardList className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No Tasks Yet
-              </h3>
-              <p className="text-gray-500 mb-4">
-                Create your first task to get started
-              </p>
-              <Button onClick={() => setIsDialogOpen(true)} className="bg-primary">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Task
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <h4 className="font-semibold">{task.checklistName}</h4>
-                      <Badge className={getStatusColor(task.status)}>
-                        {task.status}
-                      </Badge>
-                    </div>
-                    
-                    <div className="flex items-center space-x-4 text-sm text-gray-600">
-                      <div className="flex items-center space-x-1">
-                        <User className="w-4 h-4" />
-                        <span>{task.supervisorInfo?.name || 'Unassigned'}</span>
-                      </div>
-                      
-                      <div className="flex items-center space-x-1">
-                        <Calendar className="w-4 h-4" />
-                        <span>
-                          {task.scheduledDate?.toDate?.() 
-                            ? new Date(task.scheduledDate.toDate()).toLocaleDateString()
-                            : 'No date'
-                          }
-                        </span>
-                      </div>
-
-                      <span className="capitalize">{task.shift} Shift</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    {task.status === 'pending' && (
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteTask(task.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateTask}>Assgin Task</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

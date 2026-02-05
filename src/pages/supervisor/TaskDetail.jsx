@@ -5,11 +5,30 @@ import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/context/AuthContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ArrowLeft, MapPin, Clock, Calendar } from 'lucide-react';
-import MillingProcessChecklist from '@/components/checklists/MillingProcessChecklist';
-import BriquetteProductionChecklist from '@/components/checklists/BriquetteProductionChecklist';
+import { ArrowLeft, MapPin, Clock, Calendar, AlertCircle } from 'lucide-react';
+import ChecklistEngine from '@/features/checklists/components/ChecklistEngine';
+import { millingChecklistConfig } from '@/features/warehousing/config/millingChecklist';
+import { briquetteChecklistConfig } from '@/features/warehousing/config/briquetteChecklist';
+import { hubTransferChecklistConfig } from '@/features/warehousing/config/hubTransfer';
+import { warehouseClosingChecklistConfig } from '@/features/warehousing/config/warehouseClosingChecklistConfig';
+import { hubCollectionChecklistConfig } from '@/features/warehousing/config/hubCollectionChecklistConfig';
+import { warehouseMaintenanceChecklistConfig } from '@/features/warehousing/config/warehouseMaintenanceChecklist';
+import { warehouseInventoryChecklistConfig } from '@/features/warehousing/config/warehouseInventoryChecklist';
+import { GGEM_LOCATIONS } from '@/lib/locations';
 
+// Config Lookup Strategy
+const CHECKLIST_CONFIGS = {
+  'milling': millingChecklistConfig,
+  'briquette': briquetteChecklistConfig,
+  'hubtransfer': hubTransferChecklistConfig,
+  'warehouseclosing': warehouseClosingChecklistConfig,
+  'hubcollection': hubCollectionChecklistConfig,
+  'warehousemaintenance': warehouseMaintenanceChecklistConfig,
+  'warehouseinventory': warehouseInventoryChecklistConfig,
+  // Future checklists can be added here easily
+};
 
 export default function TaskDetail() {
   const { taskId } = useParams();
@@ -17,6 +36,7 @@ export default function TaskDetail() {
   const [task, setTask] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -40,11 +60,20 @@ export default function TaskDetail() {
 
   const handleStartTask = async () => {
     try {
+      // Check if task already has progress (resuming)
+      const hasProgress = task.checklistProgress && task.checklistProgress.currentStep > 1;
+
       await updateDoc(doc(db, 'tasks', taskId), {
         status: 'in-progress',
-        startTime: new Date()
+        startTime: task.startTime || new Date(), // Keep original start time if resuming
+        lastResumed: hasProgress ? new Date() : null
       });
-      setTask(prev => ({ ...prev, status: 'in-progress', startTime: new Date() }));
+
+      setTask(prev => ({
+        ...prev,
+        status: 'in-progress',
+        startTime: task.startTime || new Date()
+      }));
     } catch (err) {
       console.error('Error starting task:', err);
       setError('Failed to start task');
@@ -53,16 +82,26 @@ export default function TaskDetail() {
 
   const handleChecklistComplete = async (submissionData) => {
     try {
-      // Save submission to Firestore
-      await addDoc(collection(db, 'submissions'), submissionData);
+      // Add status field to submission
+      const submissionWithStatus = {
+        ...submissionData,
+        taskId: taskId,
+        status: 'pending',
+        supervisorId: currentUser.uid,
+        submittedAt: new Date()
+      };
 
-      // Update task status
+      // Save submission to Firestore
+      const submissionRef = await addDoc(collection(db, 'submissions'), submissionWithStatus);
+
+      // Update task status to "pending" (WAITING FOR APPROVAL)
       await updateDoc(doc(db, 'tasks', taskId), {
-        status: 'completed',
-        endTime: new Date()
+        status: 'pending', // Changed from 'completed' to 'pending'
+        endTime: new Date(),
+        submissionId: submissionRef.id
       });
 
-      alert('Checklist submitted successfully!');
+      alert(`Task submitted successfully!\nStatus: Waiting for Manager Approval`);
       navigate('/dashboard/supervisor');
     } catch (err) {
       console.error('Error submitting checklist:', err);
@@ -92,6 +131,9 @@ export default function TaskDetail() {
     );
   }
 
+  // Resolve config based on task type
+  const activeConfig = task.checklistType ? CHECKLIST_CONFIGS[task.checklistType] : null;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -102,8 +144,8 @@ export default function TaskDetail() {
         </Button>
         <Badge className={
           task.status === 'completed' ? 'bg-green-500' :
-          task.status === 'in-progress' ? 'bg-blue-500' :
-          'bg-gray-500'
+            task.status === 'in-progress' ? 'bg-blue-500' :
+              'bg-gray-500'
         }>
           {task.status}
         </Badge>
@@ -124,7 +166,7 @@ export default function TaskDetail() {
               <div>
                 <p className="text-sm font-medium">Scheduled Date</p>
                 <p className="text-sm">
-                  {task.scheduledDate?.toDate 
+                  {task.scheduledDate?.toDate
                     ? new Date(task.scheduledDate.toDate()).toLocaleDateString()
                     : 'Not set'
                   }
@@ -153,7 +195,7 @@ export default function TaskDetail() {
 
           {task.status === 'pending' && (
             <div className="pt-4">
-              <Button 
+              <Button
                 onClick={handleStartTask}
                 className="w-full bg-primary"
                 size="lg"
@@ -165,31 +207,43 @@ export default function TaskDetail() {
         </CardContent>
       </Card>
 
-      {/* Checklist Form - Show when task is in progress */}
-{/* Checklist Forms - Show when task is in progress */}
-{task.status === 'in-progress' && (
-  <>
-    {task.checklistType === 'milling' && (
-      <MillingProcessChecklist 
-        taskId={taskId}
-        onComplete={handleChecklistComplete}
-      />
-    )}
-    
-    {task.checklistType === 'briquette' && (
-      <BriquetteProductionChecklist 
-        taskId={taskId}
-        onComplete={handleChecklistComplete}
-      />
-    )}
-  </>
-)}
+      {/* Checklist Forms - Show when task is in progress */}
+      {task.status === 'in-progress' && (
+        <>
+          {/* ADD RESUME ALERT HERE - Before checklist */}
+          {task.checklistProgress && task.checklistProgress.currentStep > 1 && (
+            <Alert className="bg-blue-50 border-blue-200">
+              <AlertDescription className="text-blue-800">
+                <strong>📋 Resuming from Step {task.checklistProgress.currentStep}</strong><br />
+                Your progress has been saved. Continue from where you left off.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {activeConfig ? (
+            <ChecklistEngine
+              config={activeConfig}
+              initialData={task.checklistProgress || {}}
+              onSubmit={handleChecklistComplete}
+              taskId={task.id}
+              expectedLocation={task.location}
+            />
+          ) : (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Configuration for checklist type "{task.checklistType}" not found.
+              </AlertDescription>
+            </Alert>
+          )}
+        </>
+      )}
 
       {/* Completed Status */}
       {task.status === 'completed' && (
         <Alert className="bg-green-50 border-green-200">
           <AlertDescription className="text-green-800">
-            Task completed successfully on {task.endTime?.toDate 
+            Task completed successfully on {task.endTime?.toDate
               ? new Date(task.endTime.toDate()).toLocaleString()
               : 'Unknown'
             }

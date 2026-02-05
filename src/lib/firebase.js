@@ -3,7 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-// TODO: Replace with your Firebase config
+
 const firebaseConfig = {
   apiKey: "AIzaSyC33we_uAFOAd3DlcNQhWt0IFdzs-r9O10",
   authDomain: "deletedlater.firebaseapp.com",

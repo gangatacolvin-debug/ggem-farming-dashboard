@@ -10,6 +10,12 @@ import ManagerDashboard from '@/pages/manager/ManagerDashboard';
 import LiveMonitoring from '@/pages/manager/LiveMonitoring';
 import TaskManagement from '@/pages/manager/TaskManagement';
 import SubmissionsReview from '@/pages/manager/SubmissionsReview';
+import ManagerSchedules from '@/pages/manager/ManagerSchedules';
+import ManagerReports from '@/pages/manager/ManagerReports';
+import ManagerTaskDetail from '@/pages/manager/ManagerTaskDetail';
+import ManagerInventory from '@/pages/manager/ManagerInventory';
+import MySubmissions from '@/pages/supervisor/MySubmissions';
+import SupervisorPerformance from '@/pages/supervisor/SupervisorPerformance';
 
 // Placeholder dashboard components (we'll create these next)
 const AdminDashboard = () => <div className="p-8"><h2 className="text-2xl font-bold">Admin Dashboard</h2><p className="text-gray-600 mt-2">Welcome to the admin dashboard</p></div>;
@@ -40,7 +46,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/unauthorized" element={<Unauthorized />} />
-          
+
           {/* Dashboard Routes with Layout */}
           <Route
             path="/dashboard"
@@ -73,76 +79,125 @@ function App() {
               }
             />
 
-{/* Manager Routes */}
-<Route path="manager">
-  <Route
-    index
-    element={
-      <ProtectedRoute allowedRoles={['manager']}>
-        <ManagerDashboard />
-      </ProtectedRoute>
-    }
-  />
-  <Route
-    path="monitoring"
-    element={
-      <ProtectedRoute allowedRoles={['manager']}>
-        <LiveMonitoring />
-      </ProtectedRoute>
-    }
-  />
-  <Route
-    path="tasks"
-    element={
-      <ProtectedRoute allowedRoles={['manager']}>
-        <TaskManagement />
-      </ProtectedRoute>
-    }
-  />
+            {/* Manager Routes */}
+            <Route path="manager">
+              <Route
+                index
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <ManagerDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="monitoring"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <LiveMonitoring />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="tasks"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <TaskManagement />
+                  </ProtectedRoute>
+                }
+              />
 
-    <Route
-    path="submissions"
-    element={
-      <ProtectedRoute allowedRoles={['manager']}>
-        <SubmissionsReview />
-      </ProtectedRoute>
-    }
-  />
-</Route>
+              <Route
+                path="submissions"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <SubmissionsReview />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="task/:taskId"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <ManagerTaskDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="schedules"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <ManagerSchedules />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="reports"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <ManagerReports />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="inventory"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <ManagerInventory />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
 
 
 
 
 
-{/* Supervisor Routes */}
-<Route
-  path="supervisor"
-  element={
-    <ProtectedRoute allowedRoles={['supervisor']}>
-      <SupervisorDashboard />
-    </ProtectedRoute>
-  }
-/>
+            {/* Supervisor Routes */}
+            <Route
+              path="supervisor"
+              element={
+                <ProtectedRoute allowedRoles={['supervisor']}>
+                  <SupervisorDashboard />
+                </ProtectedRoute>
+              }
+            />
 
-{/* Supervisor Routes */}
-<Route path="supervisor">
-  <Route
-    index
-    element={
-      <ProtectedRoute allowedRoles={['supervisor']}>
-        <SupervisorDashboard />
-      </ProtectedRoute>
-    }
-  />
-  <Route
-    path="task/:taskId"
-    element={
-      <ProtectedRoute allowedRoles={['supervisor']}>
-        <TaskDetail />
-      </ProtectedRoute>
-    }
-  />
-</Route>
+            {/* Supervisor Routes */}
+            <Route path="supervisor">
+              <Route
+                index
+                element={
+                  <ProtectedRoute allowedRoles={['supervisor']}>
+                    <SupervisorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="task/:taskId"
+                element={
+                  <ProtectedRoute allowedRoles={['supervisor']}>
+                    <TaskDetail />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="submissions"
+                element={
+                  <ProtectedRoute allowedRoles={['supervisor']}>
+                    <MySubmissions />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="performance"
+                element={
+                  <ProtectedRoute allowedRoles={['supervisor']}>
+                    <SupervisorPerformance />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
           </Route>
 
           {/* Default redirect */}

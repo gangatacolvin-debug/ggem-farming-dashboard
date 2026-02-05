@@ -11,6 +11,7 @@ import {
   Building2,
   CheckSquare,
   FileText,
+  Package,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -29,7 +30,7 @@ export default function Sidebar() {
           { name: 'Analytics', href: '/dashboard/admin/analytics', icon: BarChart3 },
           { name: 'Settings', href: '/dashboard/admin/settings', icon: Settings },
         ];
-      
+
       case 'leadership':
         return [
           { name: 'Dashboard', href: '/dashboard/leadership', icon: LayoutDashboard },
@@ -37,26 +38,26 @@ export default function Sidebar() {
           { name: 'Performance', href: '/dashboard/leadership/performance', icon: BarChart3 },
           { name: 'Reports', href: '/dashboard/leadership/reports', icon: FileText },
         ];
-      
+
       case 'manager':
-  return [
-    { name: 'Dashboard', href: '/dashboard/manager', icon: LayoutDashboard },
-    { name: 'Task Management', href: '/dashboard/manager/tasks', icon: ClipboardList },
-    { name: 'Live Monitoring', href: '/dashboard/manager/monitoring', icon: CheckSquare },
-    { name: 'Submissions Review', href: '/dashboard/manager/submissions', icon: FileText },
-    { name: 'Schedules', href: '/dashboard/manager/schedules', icon: Calendar },
-    { name: 'Team Performance', href: '/dashboard/manager/performance', icon: BarChart3 },
-  ];
-      
+        return [
+          { name: 'Dashboard', href: '/dashboard/manager', icon: LayoutDashboard },
+          { name: 'Task Management', href: '/dashboard/manager/tasks', icon: ClipboardList },
+          { name: 'Live Monitoring', href: '/dashboard/manager/monitoring', icon: CheckSquare },
+          { name: 'Submissions Review', href: '/dashboard/manager/submissions', icon: FileText },
+          { name: 'Schedules', href: '/dashboard/manager/schedules', icon: Calendar },
+          { name: 'Team Performance', href: '/dashboard/manager/reports', icon: BarChart3 },
+        ];
+
       case 'supervisor':
         return [
           { name: 'Dashboard', href: '/dashboard/supervisor', icon: LayoutDashboard },
           { name: 'My Tasks', href: '/dashboard/supervisor/tasks', icon: ClipboardList },
+          { name: 'My Submissions', href: '/dashboard/supervisor/submissions', icon: FileText },
           { name: 'Active Task', href: '/dashboard/supervisor/active', icon: CheckSquare },
-          { name: 'History', href: '/dashboard/supervisor/history', icon: FileText },
           { name: 'Performance', href: '/dashboard/supervisor/performance', icon: BarChart3 },
         ];
-      
+
       default:
         return [];
     }
@@ -81,7 +82,7 @@ export default function Sidebar() {
         {navigationItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.href;
-          
+
           return (
             <Link
               key={item.href}

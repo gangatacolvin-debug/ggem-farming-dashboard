@@ -5,15 +5,44 @@ import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { 
-  MapPin, 
-  Clock, 
-  User, 
-  CheckCircle2, 
+import {
+  MapPin,
+  Clock,
+  User,
+  CheckCircle2,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  CheckSquare,
+  Activity,
+  ArrowRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Progress } from '@/components/ui/progress';
+
+// Import configs for progress calculation
+import { millingChecklistConfig } from '@/features/warehousing/config/millingChecklist';
+import { briquetteChecklistConfig } from '@/features/warehousing/config/briquetteChecklist';
+import { hubCollectionChecklistConfig as hubCollection } from '@/features/warehousing/config/hubCollectionChecklistConfig';
+import { hubTransferChecklistConfig as hubTransfer } from '@/features/warehousing/config/hubTransfer';
+import { warehouseClosingChecklistConfig as warehouseClosing } from '@/features/warehousing/config/warehouseClosingChecklistConfig';
+import { warehouseMaintenanceChecklistConfig as warehouseMaintenance } from '@/features/warehousing/config/warehouseMaintenanceChecklist';
+import { warehouseInventoryChecklistConfig as warehouseInventory } from '@/features/warehousing/config/warehouseInventoryChecklist';
+
+const CHECKLIST_CONFIGS = {
+  'milling': millingChecklistConfig,
+  'briquette': briquetteChecklistConfig,
+  'hubcollection': hubCollection,
+  'hubtransfer': hubTransfer,
+  'warehouseclosing': warehouseClosing,
+  'warehousemaintenance': warehouseMaintenance,
+  'warehouseinventory': warehouseInventory,
+  // Legacy mappings
+  'hub-collection-offloading': hubCollection,
+  'hub-transfer-inspection': hubTransfer,
+  'warehouse-closing-offloading': warehouseClosing,
+  'warehouse-maintenance': warehouseMaintenance,
+  'warehouse-inventory': warehouseInventory
+};
 
 export default function LiveMonitoring() {
   const { userDepartment } = useAuth();
@@ -25,7 +54,6 @@ export default function LiveMonitoring() {
   useEffect(() => {
     if (!userDepartment) return;
 
-    // Query active and pending tasks for this department
     const tasksQuery = query(
       collection(db, 'tasks'),
       where('department', '==', userDepartment),
@@ -34,23 +62,23 @@ export default function LiveMonitoring() {
 
     const unsubscribe = onSnapshot(tasksQuery, async (snapshot) => {
       const tasksData = [];
-      
+
       for (const taskDoc of snapshot.docs) {
         const taskData = { id: taskDoc.id, ...taskDoc.data() };
-        
-        // Fetch supervisor info
         if (taskData.assignedTo) {
           const supervisorDoc = await getDoc(doc(db, 'users', taskData.assignedTo));
           if (supervisorDoc.exists()) {
             taskData.supervisorInfo = supervisorDoc.data();
           }
         }
-        
         tasksData.push(taskData);
       }
 
       setActiveTasks(tasksData);
       setLastUpdate(new Date());
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching live tasks (snapshot):", error);
       setLoading(false);
     });
 
@@ -59,223 +87,163 @@ export default function LiveMonitoring() {
 
   const getLocationBadge = (locationCompliant) => {
     if (locationCompliant === null || locationCompliant === undefined) {
-      return <Badge variant="outline">Location Unknown</Badge>;
+      return <Badge variant="outline" className="bg-gray-100 text-gray-500">Location Unknown</Badge>;
     }
     return locationCompliant ? (
-      <Badge className="bg-green-500">
-        <MapPin className="w-3 h-3 mr-1" />
-        On Site
+      <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200">
+        <MapPin className="w-3 h-3 mr-1" /> On Site
       </Badge>
     ) : (
-      <Badge className="bg-red-500">
-        <MapPin className="w-3 h-3 mr-1" />
-        Off Site
+      <Badge className="bg-red-100 text-red-700 hover:bg-red-200 border-red-200 animate-pulse">
+        <MapPin className="w-3 h-3 mr-1" /> Off Site
       </Badge>
     );
   };
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case 'in-progress':
-        return <Badge className="bg-blue-500">In Progress</Badge>;
-      case 'pending':
-        return <Badge variant="outline">Pending</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+      case 'in-progress': return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200">In Progress</Badge>;
+      case 'pending': return <Badge variant="outline" className="bg-orange-50 text-orange-600 border-orange-200">Pending Start</Badge>;
+      default: return <Badge variant="outline">{status}</Badge>;
     }
   };
 
-  const getElapsedTime = (startTime) => {
-    if (!startTime) return 'Not started';
-    
-    const start = startTime.toDate ? startTime.toDate() : new Date(startTime);
-    const now = new Date();
-    const diff = Math.floor((now - start) / 1000 / 60); // minutes
-    
-    if (diff < 60) return `${diff} min ago`;
-    const hours = Math.floor(diff / 60);
-    const mins = diff % 60;
-    return `${hours}h ${mins}m ago`;
+  const calculateProgress = (task) => {
+    // 1. Resolve Config
+    const config = CHECKLIST_CONFIGS[task.checklistType];
+    if (!config) return 0;
+
+    // 2. Determine Total Sections
+    const totalSections = config.sections?.length || 1; // Prevent division by zero
+
+    // 3. Determine Completed Sections
+    // Try the accurate 'completedSections' array first
+    let completedCount = 0;
+    if (Array.isArray(task.completedSections)) {
+      completedCount = task.completedSections.length;
+    } else if (task.checklistProgress?.completedSections?.length) {
+      completedCount = task.checklistProgress.completedSections.length;
+    }
+    // Fallback to legacy 'currentStep' logic
+    else if (task.checklistProgress?.currentStep) {
+      completedCount = task.checklistProgress.currentStep - 1; // If on step 1, 0 completed
+    }
+
+    // 4. Calculate Percentage
+    const percentage = Math.round((completedCount / totalSections) * 100);
+
+    // Safety clamp (0-100) and NaN check
+    if (isNaN(percentage)) return 0;
+    return Math.min(100, Math.max(0, percentage));
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-gray-500">Loading monitoring data...</p>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
+
+  const inProgressCount = activeTasks.filter(t => t.status === 'in-progress').length;
+  const compliantCount = activeTasks.filter(t => t.locationCompliant === true).length;
+  const pendingCount = activeTasks.filter(t => t.status === 'pending').length;
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Live Monitoring</h1>
-          <p className="text-gray-600 mt-1">
-            Real-time task tracking and compliance monitoring
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900">Live Operations</h1>
+          <p className="text-gray-600 mt-1">Real-time supervision and compliance tracking</p>
         </div>
-        <div className="flex items-center space-x-2 text-sm text-gray-600">
-          <RefreshCw className="w-4 h-4" />
-          <span>Last update: {lastUpdate.toLocaleTimeString()}</span>
-        </div>
+        <Badge variant="outline" className="w-fit px-3 py-1 text-gray-500 bg-white shadow-sm">
+          <Activity className="w-3 h-3 mr-2 text-green-500 animate-pulse" />
+          Live Updating • Last update: {lastUpdate.toLocaleTimeString()}
+        </Badge>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Active Now
-            </CardTitle>
-          </CardHeader>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-gray-500">Active Tasks</CardTitle></CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-blue-600">
-              {activeTasks.filter(t => t.status === 'in-progress').length}
-            </div>
+            <div className="text-3xl font-bold text-gray-900">{inProgressCount}</div>
+            <p className="text-xs text-blue-600 font-medium mt-1">Currently running</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Location Compliant
-            </CardTitle>
-          </CardHeader>
+        <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-gray-500">Location Compliant</CardTitle></CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600">
-              {activeTasks.filter(t => t.locationCompliant === true).length}
-            </div>
+            <div className="text-3xl font-bold text-gray-900">{compliantCount}</div>
+            <p className="text-xs text-green-600 font-medium mt-1">Supervisors on site</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Pending Start
-            </CardTitle>
-          </CardHeader>
+        <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-gray-500">Pending Start</CardTitle></CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-orange-600">
-              {activeTasks.filter(t => t.status === 'pending').length}
-            </div>
+            <div className="text-3xl font-bold text-gray-900">{pendingCount}</div>
+            <p className="text-xs text-orange-600 font-medium mt-1">Scheduled but not started</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Active Tasks List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Active & Pending Tasks</CardTitle>
-          <CardDescription>
-            Monitor all ongoing tasks in real-time
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {activeTasks.length === 0 ? (
-            <div className="text-center py-12">
-              <CheckCircle2 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                All Clear!
-              </h3>
-              <p className="text-gray-500">
-                No active or pending tasks at the moment
-              </p>
-              <Button 
-                onClick={() => navigate('/dashboard/manager/tasks')}
-                className="mt-4"
-              >
-                Create New Task
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {activeTasks.map((task) => (
-                <Card key={task.id} className="border-2">
-                  <CardContent className="pt-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        {/* Task Header */}
-                        <div className="flex items-center space-x-2 mb-3">
-                          <h3 className="text-lg font-semibold">
-                            {task.checklistName || 'Task'}
-                          </h3>
-                          {getStatusBadge(task.status)}
-                          {getLocationBadge(task.locationCompliant)}
-                        </div>
+      {/* Tasks List */}
+      <div className="grid gap-6">
+        <h2 className="text-xl font-semibold text-gray-900">Ongoing Operations</h2>
 
-                        {/* Task Details */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                          {/* Supervisor Info */}
-                          <div className="flex items-center space-x-2 text-gray-600">
-                            <User className="w-4 h-4" />
-                            <span>
-                              {task.supervisorInfo?.name || 'Unknown Supervisor'}
-                            </span>
-                          </div>
-
-                          {/* Time Info */}
-                          <div className="flex items-center space-x-2 text-gray-600">
-                            <Clock className="w-4 h-4" />
-                            <span>
-                              {task.status === 'in-progress' 
-                                ? `Started ${getElapsedTime(task.startTime)}`
-                                : `Scheduled for ${task.scheduledDate?.toDate?.() 
-                                    ? new Date(task.scheduledDate.toDate()).toLocaleDateString()
-                                    : 'today'
-                                  }`
-                              }
-                            </span>
-                          </div>
-
-                          {/* Shift Info */}
-                          <div className="text-gray-600">
-                            <span className="font-medium">Shift:</span>{' '}
-                            <span className="capitalize">{task.shift}</span>
-                          </div>
-
-                          {/* Checklist Type */}
-                          <div className="text-gray-600">
-                            <span className="font-medium">Type:</span>{' '}
-                            <span className="capitalize">{task.checklistType}</span>
-                          </div>
-                        </div>
-
-                        {/* Location Warning */}
-                        {task.status === 'in-progress' && task.locationCompliant === false && (
-                          <div className="mt-3">
-                            <div className="flex items-start space-x-2 text-sm text-red-600 bg-red-50 p-3 rounded">
-                              <AlertCircle className="w-4 h-4 mt-0.5" />
-                              <div>
-                                <p className="font-medium">Location Compliance Issue</p>
-                                <p className="text-xs">
-                                  Supervisor may not be at the designated work site
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Action Button */}
-                      <div className="ml-4">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => navigate(`/dashboard/manager/task/${task.id}`)}
-                        >
-                          View Details
-                        </Button>
-                      </div>
+        {activeTasks.length === 0 ? (
+          <Card className="bg-gray-50 border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <CheckCircle2 className="w-12 h-12 text-gray-300 mb-4" />
+              <p className="text-lg font-medium text-gray-900">No active operations</p>
+              <p className="text-gray-500 mb-4">Everything is quiet for now.</p>
+              <Button variant="outline" onClick={() => navigate('/dashboard/manager/tasks')}>Initialize New Task</Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {activeTasks.map((task) => (
+              <Card key={task.id} className="overflow-hidden hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-primary group">
+                <CardHeader className="pb-3 bg-gray-50/50 border-b">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                        {task.checklistName}
+                      </CardTitle>
+                      <CardDescription className="flex items-center gap-2 mt-1">
+                        <User className="w-3 h-3" /> {task.supervisorInfo?.name || 'Unassigned'}
+                      </CardDescription>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    {getStatusBadge(task.status)}
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <div className="space-y-4">
+                    {/* Status Indicators */}
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-4">
+                        {getLocationBadge(task.locationCompliant)}
+                        <span className="text-gray-500 flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {task.shift} Shift
+                        </span>
+                      </div>
+                      <Button variant="ghost" size="sm" className="hidden group-hover:flex" onClick={() => navigate(`/dashboard/manager/task/${task.id}`)}>
+                        View Details <ArrowRight className="w-3 h-3 ml-2" />
+                      </Button>
+                    </div>
+
+                    {/* Progress Bar (simulated for now if not present) */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>Checklist Progress</span>
+                        <span>{Math.round(calculateProgress(task))}%</span>
+                      </div>
+                      <Progress value={calculateProgress(task)} className="h-2" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
