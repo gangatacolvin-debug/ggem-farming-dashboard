@@ -16,10 +16,10 @@ import ManagerTaskDetail from '@/pages/manager/ManagerTaskDetail';
 import ManagerInventory from '@/pages/manager/ManagerInventory';
 import MySubmissions from '@/pages/supervisor/MySubmissions';
 import SupervisorPerformance from '@/pages/supervisor/SupervisorPerformance';
+import LeadershipDashboard from '@/pages/leadership/LeadershipDashboard';
 
 // Placeholder dashboard components (we'll create these next)
 const AdminDashboard = () => <div className="p-8"><h2 className="text-2xl font-bold">Admin Dashboard</h2><p className="text-gray-600 mt-2">Welcome to the admin dashboard</p></div>;
-const LeadershipDashboard = () => <div className="p-8"><h2 className="text-2xl font-bold">Leadership Dashboard</h2><p className="text-gray-600 mt-2">Welcome to the leadership dashboard</p></div>;
 
 // Dashboard Router Component
 function DashboardRouter() {

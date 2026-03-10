@@ -1,17 +1,17 @@
 # How to Create a New Checklist
 
-This guide explains how to add a new checklist to the system. The system is configuration-driven, meaning you don't need to write complex UI code for every new checklist—you just define the inputs and the system builds it for you.
+
 
 ## Overview
 Adding a new checklist involves 3 key steps:
-1. **Create the Configuration File**: Define the questions, sections, and logic.
+1. **Create the Configuration File**: Define the questions, sections and logic.
 2. **Register the Checklist**: Tell the Supervisor App about the new config.
 3. **Update Manager Dashboard**: Allow managers to assign this new checklist type.
 
 ---
 
 ## Step 1: Create the Configuration File
-Create a new file in `src/features/warehousing/config/`. Name it something descriptive, e.g., `pestControlChecklist.js`.
+Create a new file in `src/features/warehousing/config/`. Name it something descriptive, e.g., `MaIdyablesChecklist.js`. lol
 
 ### Template
 Copy and paste this template and modify it:
@@ -22,7 +22,7 @@ Copy and paste this template and modify it:
  */
 export const myNewChecklistConfig = {
     id: 'my-new-checklist-id', // MUST be unique, no spaces (e.g., 'pest-control')
-    title: 'Pest Control Checklist',
+    title: 'Ma Idyables Checklist',
     description: 'Weekly inspection of all warehouse sectors',
     
     // Optional: Define location constraints for specific sections
@@ -34,7 +34,7 @@ export const myNewChecklistConfig = {
         {
             id: 'section-1-id',
             title: 'Part 1: Exterior Inspection',
-            icon: '🏢', // Any emoji works
+            icon: '🏢', // apa any emoji works
             description: 'Check perimeter for access points',
             estimatedDuration: 15, // minutes
             requiresLocation: true, // Forces GPS check
@@ -100,7 +100,7 @@ Open `src/pages/supervisor/TaskDetail.jsx` and import your new config.
      'milling': millingChecklistConfig,
      'briquette': briquetteChecklistConfig,
      // ... existing configs
-     'my-new-checklist-id': myNewChecklistConfig, // <--- ADD THIS LINE
+     'my-new-checklist-id': myNewChecklistConfig, // <---UPANGA ADD THIS LINE
    };
    ```
    > **CRITICAL**: The key ('my-new-checklist-id') MUST match exactly what you use in Step 3.
@@ -125,7 +125,7 @@ Open `src/pages/manager/TaskManagement.jsx` to allow managers to assign this tas
 3. **Update Name Logic**:
    In the `onValueChange` handler just above that select (around line 358), add a case to auto-fill the name:
    ```javascript
-   val === 'my-new-checklist-id' ? 'Pest Control Checklist' : ...
+   val === 'my-new-checklist-id' ? 'MA Idyables Checklist' : ...
    ```
 
 ---

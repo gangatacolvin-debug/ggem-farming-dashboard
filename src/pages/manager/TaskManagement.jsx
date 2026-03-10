@@ -383,8 +383,6 @@ export default function TaskManagement() {
                     <SelectItem value="hubcollection">Hub Collection & Offloading</SelectItem>
                     <SelectItem value="warehousemaintenance">Warehouse Maintenance</SelectItem>
                     <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
-                    <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
-                    <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -108,7 +108,7 @@ const FieldRenderer = ({ field, checklistType }) => {
 };
 
 /**
- * Enhanced ChecklistEngine with section-based progress, auto-save, and location verification
+ * ChecklistEngine with section-based progress, auto-save and location verification
  */
 export default function ChecklistEngine({
   config,
@@ -244,7 +244,7 @@ export default function ChecklistEngine({
         (position) => {
           const { latitude, longitude, accuracy } = position.coords;
 
-          console.log('📍 GPS - Current Position:', latitude, longitude, 'Accuracy:', accuracy); // ← ADD THIS
+          console.log('📍 GPS - Current Position:', latitude, longitude, 'Accuracy:', accuracy);
           setCurrentLocation({ latitude, longitude, accuracy });
 
           let dist = null;
@@ -257,8 +257,9 @@ export default function ChecklistEngine({
               expectedLocation.latitude,
               expectedLocation.longitude
             );
+            const maxDist = expectedLocation.radius || 500;
             setDistance(Math.round(dist));
-            isCompliant = dist <= MAX_ALLOWED_DISTANCE;
+            isCompliant = dist <= maxDist;
             setLocationStatus(isCompliant ? 'compliant' : 'warning');
           } else {
             setLocationStatus('no-requirement');
@@ -572,7 +573,7 @@ export default function ChecklistEngine({
                 <AlertDescription className="text-orange-700">
                   ⚠ Warning: You are {distance}m away from {expectedLocation.name}
                   {config.sections.find(s => s.id === activeSection)?.requiresLocation &&
-                    ' - You must be within 500m to complete this section'}
+                    ` - You must be within ${expectedLocation.radius || 500}m to complete this section`}
                 </AlertDescription>
               </Alert>
             )}
