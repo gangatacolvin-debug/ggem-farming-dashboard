@@ -16,6 +16,11 @@ import { hubTransferChecklistConfig as hubTransfer } from '@/features/warehousin
 import { warehouseClosingChecklistConfig as warehouseClosing } from '@/features/warehousing/config/warehouseClosingChecklistConfig';
 import { warehouseMaintenanceChecklistConfig as warehouseMaintenance } from '@/features/warehousing/config/warehouseMaintenanceChecklist';
 import { warehouseInventoryChecklistConfig as warehouseInventory } from '@/features/warehousing/config/warehouseInventoryChecklist';
+import { outreachEngagementChecklistConfig as outreachEngagement } from '@/features/data-field/config/outreachEngagementChecklist';
+import { salesMarketingChecklistConfig as salesMarketing } from '@/features/data-field/config/salesMarketingChecklist';
+import { fieldMonitoringQAChecklistConfig as fieldMonitoringQA } from '@/features/data-field/config/Fieldmonitoringqachecklist';
+import { dataCallCentreOversightChecklistConfig as dataCallCentreOversight } from '@/features/data-field/config/Datacallcentreoversightchecklist';
+
 
 export default function ManagerTaskDetail() {
     const { taskId } = useParams();
@@ -66,6 +71,19 @@ export default function ManagerTaskDetail() {
         case 'warehouseinventory':
         case 'warehouse-inventory':
             config = warehouseInventory;
+            break;
+        case 'outreach-engagement':
+            config = outreachEngagement;
+            break;
+        case 'sales-marketing':
+            config = salesMarketing;
+            break;
+
+        case 'field-monitoring-qa':
+            config = fieldMonitoringQA;
+            break;
+        case 'data-callcentre-oversight':
+            config = dataCallCentreOversight;
             break;
         default: config = null;
     }

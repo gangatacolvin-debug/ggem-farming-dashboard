@@ -21,6 +21,19 @@ export const DEPARTMENTS_CONFIG = [
             'warehouse-inventory'
         ]
     },
+    {
+        id: 'data-and-field',
+        name: 'Data and Field',
+        icon: 'Users', // Will map to a Lucide icon
+        description: 'Outreach, Engagement, Field Monitoring & QA',
+        color: 'emerald',
+        checklists: [
+            'outreach-engagement',
+            'sales-marketing',
+            'field-monitoring-qa',
+            'data-callcentre-oversight'
+        ]
+    },
     // Future departments can be added here:
     // {
     //     id: 'farming',

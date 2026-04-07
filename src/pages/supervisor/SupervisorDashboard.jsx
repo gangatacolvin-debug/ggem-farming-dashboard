@@ -1,20 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, MapPin, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, MapPin, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { DEPARTMENTS_CONFIG } from '@/config/departments';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function SupervisorDashboard() {
-  const { currentUser } = useAuth();
+  const { currentUser, userDepartment } = useAuth();
   const navigate = useNavigate();
   const [todayTasks, setTodayTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isNewTaskDialogOpen, setIsNewTaskDialogOpen] = useState(false);
+  const [selectedChecklistId, setSelectedChecklistId] = useState('');
+  const [creatingTask, setCreatingTask] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -161,6 +168,40 @@ export default function SupervisorDashboard() {
     )
   );
 
+  const handleStartNewTask = async () => {
+    if (!selectedChecklistId || !currentUser) return;
+    
+    setCreatingTask(true);
+    try {
+      const department = DEPARTMENTS_CONFIG.find(d => d.checklists.includes(selectedChecklistId));
+      
+      const newTask = {
+        checklistName: selectedChecklistId.replace(/-/g, ' '),
+        checklistType: selectedChecklistId,
+        department: department ? department.id : userDepartment,
+        assignedTo: currentUser.uid,
+        status: 'in-progress',
+        scheduledDate: new Date(),
+        startTime: new Date(),
+        shift: 'Day', // Default shift
+        createdAt: new Date()
+      };
+
+      const docRef = await addDoc(collection(db, 'tasks'), newTask);
+      setIsNewTaskDialogOpen(false);
+      navigate(`/dashboard/supervisor/task/${docRef.id}`);
+    } catch (error) {
+      console.error('Error starting new task:', error);
+      alert('Failed to start new task');
+    } finally {
+      setCreatingTask(false);
+    }
+  };
+
+  const currentDepartmentConfig = DEPARTMENTS_CONFIG.find(d => d.id === userDepartment);
+  // Default to empty array if user department has no checklists
+  const availableChecklists = currentDepartmentConfig ? currentDepartmentConfig.checklists : [];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -178,14 +219,23 @@ export default function SupervisorDashboard() {
             <h1 className="text-3xl font-bold text-gray-900">My Dashboard</h1>
             <p className="text-gray-600 mt-1">View and manage your assigned tasks</p>
           </div>
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={() => navigate('/dashboard/supervisor/performance')}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            View My Performance
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              className="gap-2 bg-primary text-white"
+              onClick={() => setIsNewTaskDialogOpen(true)}
+            >
+              <Plus className="w-4 h-4" />
+              Start New Checklist
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => navigate('/dashboard/supervisor/performance')}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              View My Performance
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -253,6 +303,44 @@ export default function SupervisorDashboard() {
           <TaskList tasks={categorizedTasks.rejected} emptyMessage="No rejected tasks" />
         </TabsContent>
       </Tabs>
+
+      {/* Start New Task Dialog */}
+      <Dialog open={isNewTaskDialogOpen} onOpenChange={setIsNewTaskDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start New Checklist</DialogTitle>
+            <DialogDescription>
+              Select a checklist to initiate a new task assignment for yourself.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Select Checklist</Label>
+              <Select value={selectedChecklistId} onValueChange={setSelectedChecklistId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a checklist..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableChecklists.map(checklistId => (
+                    <SelectItem key={checklistId} value={checklistId} className="capitalize">
+                      {checklistId.replace(/-/g, ' ')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewTaskDialogOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={handleStartNewTask} 
+              disabled={!selectedChecklistId || creatingTask}
+            >
+              {creatingTask ? 'Starting...' : 'Start Task'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

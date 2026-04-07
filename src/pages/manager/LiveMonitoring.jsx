@@ -27,6 +27,10 @@ import { hubTransferChecklistConfig as hubTransfer } from '@/features/warehousin
 import { warehouseClosingChecklistConfig as warehouseClosing } from '@/features/warehousing/config/warehouseClosingChecklistConfig';
 import { warehouseMaintenanceChecklistConfig as warehouseMaintenance } from '@/features/warehousing/config/warehouseMaintenanceChecklist';
 import { warehouseInventoryChecklistConfig as warehouseInventory } from '@/features/warehousing/config/warehouseInventoryChecklist';
+import { outreachEngagementChecklistConfig as outreachEngagement } from '@/features/data-field/config/outreachEngagementChecklist';
+import { salesMarketingChecklistConfig as salesMarketing } from '@/features/data-field/config/salesMarketingChecklist';
+import { fieldMonitoringQAChecklistConfig as fieldMonitoringQA } from '@/features/data-field/config/Fieldmonitoringqachecklist';
+import { dataCallCentreOversightChecklistConfig as dataCallCentreOversight } from '@/features/data-field/config/Datacallcentreoversightchecklist';
 
 const CHECKLIST_CONFIGS = {
   'milling': millingChecklistConfig,
@@ -36,6 +40,10 @@ const CHECKLIST_CONFIGS = {
   'warehouseclosing': warehouseClosing,
   'warehousemaintenance': warehouseMaintenance,
   'warehouseinventory': warehouseInventory,
+  'outreach-engagement': outreachEngagement,
+  'sales-marketing': salesMarketing,
+  'field-monitoring-qa': fieldMonitoringQA,
+  'data-callcentre-oversight': dataCallCentreOversight,
   // Legacy mappings
   'hub-collection-offloading': hubCollection,
   'hub-transfer-inspection': hubTransfer,

@@ -55,7 +55,7 @@ export default function SubmissionsReview() {
     const tasksQuery = query(
       collection(db, 'tasks'),
       where('department', '==', userDepartment),
-      where('status', 'in', ['pending', 'approved', 'rejected'])
+      where('status', 'in', ['pending', 'approved', 'rejected', 'flagged'])
     );
 
     const unsubscribe = onSnapshot(tasksQuery, async (snapshot) => {
@@ -200,11 +200,51 @@ export default function SubmissionsReview() {
     }
   };
 
+  const handleFlag = async () => {
+    if (!selectedSubmission) return;
+
+    if (!feedback.trim()) {
+      alert('Please provide feedback explaining why this is being flagged');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      // Update submission status
+      await updateDoc(doc(db, 'submissions', selectedSubmission.id), {
+        status: 'flagged',
+        flaggedBy: currentUser.uid,
+        flaggedAt: new Date(),
+        feedback: feedback
+      });
+
+      // Update task status
+      if (selectedSubmission.taskId) {
+        await updateDoc(doc(db, 'tasks', selectedSubmission.taskId), {
+          status: 'flagged',
+          flaggedAt: new Date(),
+          flaggedBy: currentUser.uid
+        });
+      }
+
+      setSuccess('Submission flagged for follow-up.');
+      setIsDialogOpen(false);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Error flagging submission:', err);
+      alert('Failed to flag submission');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     if (status === 'approved') {
       return <Badge className="bg-green-500">Approved</Badge>;
     } else if (status === 'rejected') {
       return <Badge className="bg-red-500">Rejected</Badge>;
+    } else if (status === 'flagged') {
+      return <Badge className="bg-yellow-500 hover:bg-yellow-600">Flagged</Badge>;
     } else {
       return <Badge className="bg-orange-500">Pending Review</Badge>;
     }
@@ -243,7 +283,7 @@ export default function SubmissionsReview() {
             Approved ({submissions.filter(s => s.status === 'approved').length})
           </TabsTrigger>
           <TabsTrigger value="rejected">
-            Rejected ({submissions.filter(s => s.status === 'rejected').length})
+            Rejected / Flagged ({submissions.filter(s => s.status === 'rejected' || s.status === 'flagged').length})
           </TabsTrigger>
         </TabsList>
 
@@ -267,8 +307,8 @@ export default function SubmissionsReview() {
 
         <TabsContent value="rejected" className="mt-6">
           <SubmissionList
-            items={submissions.filter(s => s.status === 'rejected')}
-            emptyMessage="No rejected submissions"
+            items={submissions.filter(s => s.status === 'rejected' || s.status === 'flagged')}
+            emptyMessage="No rejected or flagged submissions"
             getStatusBadge={getStatusBadge}
             handleViewDetails={handleViewDetails}
           />
@@ -473,15 +513,26 @@ export default function SubmissionsReview() {
                       <CheckCircle2 className="w-4 h-4 mr-2" />
                       {actionLoading ? 'Approving...' : 'Approve'}
                     </Button>
-                    <Button
-                      onClick={handleReject}
-                      disabled={actionLoading}
-                      variant="destructive"
-                      className="flex-1"
-                    >
-                      <XCircle className="w-4 h-4 mr-2" />
-                      {actionLoading ? 'Rejecting...' : 'Reject'}
-                    </Button>
+                    {selectedSubmission.checklistType === 'outreach-engagement' ? (
+                      <Button
+                        onClick={handleFlag}
+                        disabled={actionLoading}
+                        className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white"
+                      >
+                        <AlertTriangle className="w-4 h-4 mr-2" />
+                        {actionLoading ? 'Flagging...' : 'Flag Issue'}
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleReject}
+                        disabled={actionLoading}
+                        variant="destructive"
+                        className="flex-1"
+                      >
+                        <XCircle className="w-4 h-4 mr-2" />
+                        {actionLoading ? 'Rejecting...' : 'Reject'}
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
@@ -703,6 +754,672 @@ export default function SubmissionsReview() {
               )}
 
               {/*this section ends here mr*/}
+
+              {/* Sales & Marketing Details */}
+              {selectedSubmission.checklistType === 'sales-marketing' && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg border-b pb-2">Sales & Marketing Data</h3>
+
+                  {/* Session Overview */}
+                  <Card className="bg-gray-50/50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-medium">Session Overview</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Week Of</Label>
+                          <p className="font-semibold">
+                            {selectedSubmission['week-of']
+                              ? new Date(selectedSubmission['week-of']).toLocaleDateString()
+                              : '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Zone / District</Label>
+                          <p className="font-semibold">{selectedSubmission['zone-district'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Team</Label>
+                          <p className="font-semibold">{selectedSubmission['team-responsible'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Supervisor</Label>
+                          <p className="font-semibold">{selectedSubmission['supervisor-name'] || '--'}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* KPI Numbers */}
+                  <Card className="bg-gray-50/50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-medium">Performance KPIs</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Sales Volume</Label>
+                          <p className="font-bold text-lg text-primary">
+                            {selectedSubmission['sales-volume-units'] || '--'}
+                          </p>
+                          <p className="text-xs text-gray-400">kg / units</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Sales Value</Label>
+                          <p className="font-bold text-lg text-primary">
+                            {selectedSubmission['sales-value-mwk']
+                              ? `MWK ${Number(selectedSubmission['sales-value-mwk']).toLocaleString()}`
+                              : '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Customer Visits</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['customer-visits-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">New Customers</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['new-customers-reached'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Leads Converted</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['leads-converted-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Kiosk Visits</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['kiosk-visits-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Complaints Resolved</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['complaints-resolved-count'] || '--'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                    {/* Key Checkpoints */}
+                    <Card className="bg-gray-50/50">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-medium">Key Checkpoints</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 gap-2 text-sm">
+                          {[
+                            { id: 'sales-targets-reviewed', label: 'Sales Targets Reviewed' },
+                            { id: 'stock-availability-confirmed', label: 'Stock Availability Confirmed' },
+                            { id: 'marketing-materials-prepared', label: 'Marketing Materials Prepared' },
+                            { id: 'transport-fuel-confirmed', label: 'Transport & Fuel Confirmed' },
+                            { id: 'callcentre-coordinated', label: 'Call-Centre Coordinated' },
+                            { id: 'team-briefed', label: 'Team Briefed on Targets' },
+                            { id: 'demos-conducted', label: 'Demos / Kiosk Visits Conducted' },
+                            { id: 'sales-registered', label: 'Sales Registered in CRM' },
+                            { id: 'feedback-collected', label: 'Customer Feedback Collected' },
+                            { id: 'leads-followed-up', label: 'Leads Followed Up' },
+                            { id: 'cash-reconciliation-done', label: 'Cash Reconciliation Done' },
+                            { id: 'new-outlets-identified', label: 'New Outlets Identified' },
+                            { id: 'competitor-data-gathered', label: 'Competitor Data Gathered' },
+                            { id: 'daily-sales-submitted', label: 'Daily Sales Submitted by 6pm' },
+                            { id: 'totals-verified', label: 'Totals Verified Against Receipts' },
+                            { id: 'weekly-summary-submitted', label: 'Weekly Summary Submitted' },
+                            { id: 'review-meeting-attended', label: 'Review Meeting Attended' },
+                            { id: 'tracker-updated', label: 'Sales Tracker Updated' },
+                          ].map(item => (
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between bg-white p-2 rounded border"
+                            >
+                              <span>{item.label}</span>
+                              {selectedSubmission[item.id] ? (
+                                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <XCircle className="w-5 h-5 text-red-600" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Notes */}
+                    <Card className="bg-gray-50/50">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-medium">Notes & Observations</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Preparation Notes</Label>
+                          <p className="font-medium mt-1">
+                            {selectedSubmission['prep-notes'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Market Development Notes</Label>
+                          <p className="font-medium mt-1">
+                            {selectedSubmission['market-notes'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Reporting Notes</Label>
+                          <p className="font-medium mt-1">
+                            {selectedSubmission['reporting-notes'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Photos Captured</Label>
+                          <p className="font-medium mt-1">
+                            {selectedSubmission['photos-captured'] ? 'Yes' : 'No'}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                  </div>
+                </div>
+              )}
+              {/* Field Monitoring & QA Details */}
+              {selectedSubmission.checklistType === 'field-monitoring-qa' && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg border-b pb-2">Field Monitoring & QA Data</h3>
+
+                  {/* Session Overview */}
+                  <Card className="bg-gray-50/50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-medium">Session Overview</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Week Of</Label>
+                          <p className="font-semibold">
+                            {selectedSubmission['week-of']
+                              ? new Date(selectedSubmission['week-of']).toLocaleDateString()
+                              : '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Zone / District</Label>
+                          <p className="font-semibold">{selectedSubmission['zone-district'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Team</Label>
+                          <p className="font-semibold">{selectedSubmission['team-responsible'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Supervisor</Label>
+                          <p className="font-semibold">{selectedSubmission['supervisor-name'] || '--'}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* KPI Numbers */}
+                  <Card className="bg-gray-50/50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-medium">Performance KPIs</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Sites Visited</Label>
+                          <p className="font-bold text-lg text-primary">
+                            {selectedSubmission['sites-visited-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Spot Checks</Label>
+                          <p className="font-bold text-lg text-primary">
+                            {selectedSubmission['spot-checks-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Call Logs Reviewed</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['callcentre-logs-reviewed-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Data Accuracy</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['data-accuracy-pct']
+                              ? `${selectedSubmission['data-accuracy-pct']}%`
+                              : '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Issues Flagged</Label>
+                          <p className="font-bold text-lg text-orange-600">
+                            {selectedSubmission['issues-flagged-count'] || '0'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Issues Resolved</Label>
+                          <p className="font-bold text-lg text-green-600">
+                            {selectedSubmission['issues-resolved-count'] || '0'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">QA Reports Submitted</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['qa-reports-submitted-count'] || '--'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                    {/* Key Checkpoints */}
+                    <Card className="bg-gray-50/50">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-medium">Key Checkpoints</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 gap-2 text-sm">
+                          {[
+                            { id: 'previous-reports-reviewed', label: 'Previous Reports Reviewed' },
+                            { id: 'monitoring-schedule-confirmed', label: 'Monitoring Schedule Confirmed' },
+                            { id: 'monitoring-forms-prepared', label: 'Monitoring Forms Prepared' },
+                            { id: 'tools-calibrated', label: 'Tools Calibrated & Connectivity Tested' },
+                            { id: 'logistics-confirmed', label: 'Field Logistics Confirmed' },
+                            { id: 'sites-visited', label: 'Field Sites Visited / Verified' },
+                            { id: 'spot-checks-done', label: 'At Least 3 Spot Checks Conducted' },
+                            { id: 'staff-performance-documented', label: 'Staff Performance Documented' },
+                            { id: 'targets-alignment-verified', label: 'Targets Alignment Verified' },
+                            { id: 'gps-evidence-captured', label: 'GPS / Photo Evidence Captured' },
+                            { id: 'issues-recorded', label: 'Issues & Best Practices Recorded' },
+                            { id: 'beneficiaries-interviewed', label: 'Beneficiaries Interviewed' },
+                            { id: 'monitoring-tracker-updated', label: 'Monitoring Tracker Updated' },
+                            { id: 'call-recordings-reviewed', label: 'Call Recordings Reviewed' },
+                            { id: 'field-data-crosschecked', label: 'Field Data Cross-Checked with CRM' },
+                            { id: 'messaging-consistency-reviewed', label: 'Messaging Consistency Reviewed' },
+                            { id: 'findings-recorded', label: 'Findings Recorded in QA Template' },
+                            { id: 'corrective-actions-recommended', label: 'Corrective Actions Recommended' },
+                            { id: 'weekly-report-compiled', label: 'Weekly Report Compiled' },
+                            { id: 'report-submitted-friday', label: 'Report Submitted by Friday 3pm' },
+                            { id: 'urgent-items-highlighted', label: 'Urgent Items Highlighted' },
+                            { id: 'lessons-shared', label: 'Lessons Shared in Weekly Review' },
+                            { id: 'corrective-actions-verified', label: 'Corrective Actions Verified' },
+                          ].map(item => (
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between bg-white p-2 rounded border"
+                            >
+                              <span>{item.label}</span>
+                              {selectedSubmission[item.id] ? (
+                                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <XCircle className="w-5 h-5 text-red-600" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Notes */}
+                    <Card className="bg-gray-50/50">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-medium">Notes & Observations</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Preparation Notes</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['prep-notes'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Monitoring Execution Notes</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['execution-notes'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">QA Review Notes</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['qa-notes'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Reporting Notes</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['reporting-notes'] || '--'}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                  </div>
+                </div>
+              )}
+
+
+              {/* Data & Call Centre Oversight Details */}
+              {selectedSubmission.checklistType === 'data-callcentre-oversight' && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg border-b pb-2">Data & Call Centre Oversight</h3>
+
+                  {/* Session Overview */}
+                  <Card className="bg-gray-50/50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-medium">Session Overview</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Date</Label>
+                          <p className="font-semibold">
+                            {selectedSubmission['date']
+                              ? new Date(selectedSubmission['date']).toLocaleDateString()
+                              : '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Shift / Batch</Label>
+                          <p className="font-semibold">{selectedSubmission['shift-batch'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Supervisor</Label>
+                          <p className="font-semibold">{selectedSubmission['supervisor-name'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Line Manager</Label>
+                          <p className="font-semibold">{selectedSubmission['line-manager'] || '--'}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* KPI Numbers */}
+                  <Card className="bg-gray-50/50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-medium">Performance KPIs</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Active Agents</Label>
+                          <p className="font-bold text-lg text-primary">
+                            {selectedSubmission['active-agents-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Calls Made</Label>
+                          <p className="font-bold text-lg text-primary">
+                            {selectedSubmission['calls-made-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">SMS Sent</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['sms-sent-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Farmers Reached</Label>
+                          <p className="font-bold text-lg text-primary">
+                            {selectedSubmission['farmers-reached-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Data Collectors</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['collectors-on-duty-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Farmer Registrations</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['new-farmer-registrations-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Training Records</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['farmer-training-records-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Partner Records</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['partner-records-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Partner Follow-Ups</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['partner-followups-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Kiosk Transactions</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['kiosk-transactions-count'] || '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Verified Entries</Label>
+                          <p className="font-bold text-lg">
+                            {selectedSubmission['verified-entries-pct']
+                              ? `${selectedSubmission['verified-entries-pct']}%`
+                              : '--'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Issues Flagged</Label>
+                          <p className="font-bold text-lg text-orange-600">
+                            {selectedSubmission['issues-flagged-count'] || '0'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border text-center">
+                          <Label className="text-gray-500 text-xs uppercase">Issues Resolved</Label>
+                          <p className="font-bold text-lg text-green-600">
+                            {selectedSubmission['issues-resolved-count'] || '0'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                    {/* Key Checkpoints */}
+                    <Card className="bg-gray-50/50">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-medium">Key Checkpoints</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 gap-2 text-sm">
+                          {[
+                            { id: 'agents-briefed', label: 'Agents Briefed for the Day' },
+                            { id: 'call-outcomes-logged', label: 'Call Outcomes Logged in CRM' },
+                            { id: 'call-list-aligned', label: 'Call List Aligned with Outreach Plan' },
+                            { id: 'spot-checks-completed', label: 'Call Quality Spot-Checks Done' },
+                            { id: 'farmer-issues-escalated', label: 'Farmer Issues Escalated (if any)' },
+                            { id: 'attendance-route-confirmed', label: 'Attendance & Route Plans Confirmed' },
+                            { id: 'latest-forms-confirmed', label: 'Latest Survey Forms in Use' },
+                            { id: 'fmt-verified-submissions', label: 'FMT Verified Collector Submissions' },
+                            { id: 'spot-checks-accuracy', label: 'Accuracy Spot-Checks Conducted' },
+                            { id: 'gps-timestamps-verified', label: 'GPS & Timestamps Verified' },
+                            { id: 'corrective-actions-recorded', label: 'Corrective Actions Recorded' },
+                            { id: 'farmer-data-accuracy-verified', label: 'Farmer Data Accuracy Verified' },
+                            { id: 'gps-timestamp-confirmed', label: 'GPS & Timestamp Per Entry Confirmed' },
+                            { id: 'duplicates-identified', label: 'Duplicates / Errors Identified' },
+                            { id: 'farmer-summary-submitted', label: 'Farmer Summary Submitted to FMT' },
+                            { id: 'partner-reports-verified', label: 'Partner Reports Verified by FMT' },
+                            { id: 'partner-completeness-checked', label: 'Partner Entry Completeness Checked' },
+                            { id: 'partner-data-submitted', label: 'Partner Data Submitted to Monitoring Officer' },
+                            { id: 'kiosk-transactions-verified', label: 'Kiosk Transactions Verified in Odoo' },
+                            { id: 'reconciliation-confirmed', label: 'Cash / Mobile-Money Reconciliation Done' },
+                            { id: 'kiosk-entry-completeness', label: 'Kiosk Entry Completeness Checked' },
+                            { id: 'odoo-crosscheck-done', label: 'Odoo Cross-Checked with Receipts' },
+                            { id: 'kiosk-summary-submitted', label: 'Kiosk Summary Submitted' },
+                            { id: 'ten-pct-sample-reviewed', label: '10% Sample of All Entries Reviewed' },
+                            { id: 'no-blank-entries', label: 'No Blank / Placeholder Entries in CRM' },
+                            { id: 'escalated-issues-have-owners', label: 'Escalated Issues Have Assigned Owners' },
+                            { id: 'backup-copies-saved', label: 'Backup Copies of Daily Data Saved' },
+                          ].map(item => (
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between bg-white p-2 rounded border"
+                            >
+                              <span>{item.label}</span>
+                              {selectedSubmission[item.id] ? (
+                                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <XCircle className="w-5 h-5 text-red-600" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Notes & Issues */}
+                    <Card className="bg-gray-50/50">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-medium">Notes & Issues</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Call Centre Issues / Feedback</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['issues-feedback-today'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Device / Syncing Issues</Label>
+                          <p className="font-medium mt-1">
+                            {selectedSubmission['device-issues-found']
+                              ? selectedSubmission['device-issues-details'] || 'Issues found — no details provided'
+                              : 'None'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Kiosk Discrepancies</Label>
+                          <p className="font-medium mt-1">
+                            {selectedSubmission['kiosk-discrepancies-found']
+                              ? selectedSubmission['kiosk-discrepancy-details'] || 'Discrepancies found — no details provided'
+                              : 'None'}
+                          </p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Partner Issues Escalated</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['partner-issues-escalated'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Quality & Compliance Notes</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['quality-notes'] || '--'}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                  </div>
+                </div>
+              )}
+              {/* end herr */}
+
+              {/* Outreach & Engagement Details */}
+              {selectedSubmission.checklistType === 'outreach-engagement' && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg border-b pb-2">Outreach & Engagement Data</h3>
+
+                  <Card className="bg-gray-50/50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-medium">Session Overview</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Week Of</Label>
+                          <p className="font-semibold">{selectedSubmission['week-of'] ? new Date(selectedSubmission['week-of']).toLocaleDateString() : '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Zone / District</Label>
+                          <p className="font-semibold">{selectedSubmission['zone-district'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Sessions Held</Label>
+                          <p className="font-bold text-lg">{selectedSubmission['sessions-held-count'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Participants</Label>
+                          <p className="font-bold text-lg text-primary">{selectedSubmission['participants-reached'] || '--'}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Topics Covered</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['topic-covered'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Participant Questions & Feedback</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['questions-recorded'] || '--'}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card className="bg-gray-50/50">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-medium">Key Checkpoints</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 gap-2 text-sm">
+                          {[
+                            { id: 'weekly-plan-reviewed', label: 'Weekly Plan Reviewed' },
+                            { id: 'meetings-confirmed', label: 'Meetings Confirmed' },
+                            { id: 'materials-prepared', label: 'Materials Prepared' },
+                            { id: 'introductions-conducted', label: 'Introductions Conducted' },
+                            { id: 'messages-presented', label: 'Messages Presented Clearly' },
+                            { id: 'attendance-collected', label: 'Attendance Collected' }
+                          ].map(item => (
+                            <div key={item.id} className="flex items-center justify-between bg-white p-2 rounded border">
+                              <span>{item.label}</span>
+                              {selectedSubmission[item.id] ?
+                                <CheckCircle2 className="w-5 h-5 text-green-600" /> :
+                                <XCircle className="w-5 h-5 text-red-600" />
+                              }
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-gray-50/50">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-medium">Review & KPIs</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                          <div className="bg-white p-3 rounded border text-center">
+                            <Label className="text-gray-500 text-xs uppercase">Women %</Label>
+                            <p className="font-bold text-lg">{selectedSubmission['women-participants'] || '--'}%</p>
+                          </div>
+                          <div className="bg-white p-3 rounded border text-center">
+                            <Label className="text-gray-500 text-xs uppercase">New Groups</Label>
+                            <p className="font-bold text-lg">{selectedSubmission['new-groups'] || '--'}</p>
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-3 rounded border mb-2">
+                          <Label className="text-gray-500 text-xs uppercase">Recurring Issues FAQs</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['recurring-issues'] || '--'}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded border">
+                          <Label className="text-gray-500 text-xs uppercase">Improvements Recommended</Label>
+                          <p className="font-medium mt-1">{selectedSubmission['improvements'] || '--'}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              )}
 
               {/* Briquette Production Details */}
               {selectedSubmission.checklistType === 'briquette' && (

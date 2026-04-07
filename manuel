@@ -1,0 +1,125 @@
+Step 1: Create the Configuration File
+First, create the blueprint for your checklist.
+Create a new file in src/features/warehousing/config/. Name it something descriptive, for example, pestControlChecklist.js.
+Add the checklist structure based on the following template:
+javascript
+
+
+/**
+* @type {import('../../checklists/components/ChecklistEngine').ChecklistConfig}
+*/
+
+
+export const myNewChecklistConfig = {
+   // MUST be unique, strictly lowercase with no spaces (e.g., 'pest-control')
+   id: 'my-new-checklist-id',
+   title: 'Pest Control Checklist',
+   description: 'Weekly inspection of all warehouse sectors',
+  
+   // Optional: Define location constraints for specific sections
+   // locationCheckpoints: {
+   //     'section-id': 'location-key-from-locations-js'
+   // },
+   sections: [
+       {
+           id: 'section-1-id',
+           title: 'Part 1: Exterior Inspection',
+           icon: '🏢', // Any emoji works
+           description: 'Check perimeter for access points',
+           estimatedDuration: 15, // minutes
+           requiresLocation: true, // Forces GPS check
+           fields: [
+               {
+                   id: 'perimeter-check',
+                   type: 'checkbox',
+                   label: 'Perimeter checked for gaps',
+                   required: true
+               },
+               {
+                   id: 'notes',
+                   type: 'text',
+                   label: 'Observations',
+                   placeholder: 'Enter details...'
+               }
+           ]
+       },
+       {
+           id: 'section-2-id',
+           title: 'Part 2: Interior Traps',
+           icon: '🪤',
+           fields: [
+               {
+                   id: 'trap-log',
+                   type: 'log-table',
+                   label: 'Trap Inspection Log',
+                   columns: [
+                       { key: 'trapId', label: 'Trap ID', type: 'text' },
+                       { key: 'status', label: 'Status', type: 'select', options: [{ value: 'Caught', label: 'Caught' }, { value: 'Empty', label: 'Empty' }] }
+                   ]
+               }
+           ]
+       }
+   ]
+};
+TIP
+Available Field Types:
+text: Single-line text input
+number: Numeric input
+checkbox: Simple Yes/No toggle
+select: Dropdown menu (requires options: [{value: 'x', label: 'X'}] structure)
+date: interactive Date picker
+time: Time picker
+log-table: Dynamic table for adding multiple rows of data
+summary: Automatic summary block (usually placed at the end of the form)
+Step 2: Register the Checklist in the Supervisor App (TaskDetail.jsx)
+The Supervisor app needs to know about this checklist to let staff fill it out.
+Open src/pages/supervisor/TaskDetail.jsx.
+Import your file at the top with the other checklist configurations:
+javascript
+import { myNewChecklistConfig } from '@/features/warehousing/config/pestControlChecklist';
+Find the CHECKLIST_CONFIGS dictionary object and add your new ID:
+javascript
+const CHECKLIST_CONFIGS = {
+ 'milling': millingChecklistConfig,
+ 'briquette': briquetteChecklistConfig,
+ // ... existing configs
+ 'my-new-checklist-id': myNewChecklistConfig, // <--- Add your config!
+};
+IMPORTANT
+The dictionary key ('my-new-checklist-id') must exactly match the string used when the Manager assigns a new task.
+Step 3: Enable Managers to View It (ManagerTaskDetail.jsx & LiveMonitoring.jsx)
+The Manager portal needs to know how to render the live form progress. Since managers can review checklists dynamically as they happen:
+Open src/pages/manager/ManagerTaskDetail.jsx.
+Import your config alongside the others at the top:
+javascript
+import { myNewChecklistConfig as pestControlConfig } from '@/features/warehousing/config/pestControlChecklist';
+Locate the switch (task.checklistType) block (around line 45) and add a case for your new checklist ID so the system passes the correct configuration to the reporting UI:
+javascript
+case 'my-new-checklist-id':
+   config = pestControlConfig;
+   break;
+Repeat these exact steps 2 & 3 inside src/pages/manager/LiveMonitoring.jsx so the checklist format successfully displays over the "Live Monitor" panel.
+Step 4: Add to Task Assignments (TaskManagement.jsx)
+Finally, you need to allow Managers to create and assign instances of this new checklist.
+Open src/pages/manager/TaskManagement.jsx.
+Find the filter Dropdown (around line 240) and add your item:
+javascript
+<SelectItem value="my-new-checklist-id">Pest Control Checklist</SelectItem>
+Under the "New Task" Dialog (around line 375), find the "Type" Select component and add your item so it can actually be assigned out:
+javascript
+<SelectItem value="my-new-checklist-id">Pest Control Checklist</SelectItem>
+Find the onValueChange handler just above that select block (around line 358) and add a ternary/switch case to auto-fill the Task Name when the manager picks the type:
+javascript
+const autoName = val === 'milling' ? 'Milling Production Checklist'
+              // ...existing logic...
+              : val === 'my-new-checklist-id' ? 'Pest Control Checklist'
+              : '';
+
+Step 5: Test the Application!
+You don't need to manually configure the database (Firebase handles schema dynamically using the tasks and submissions collections).
+Log into the local application as a Manager.
+Go to Manager Dashboard -> Task Management.
+Click "New Assignment". You should see your new checklist type. Apply it to an active Supervisor account.
+Log out, then log in using that specific Supervisor account.
+Open up the newly assigned task on their UI and verify the checklist interface pops up correctly and displays the icons and form fields!
+

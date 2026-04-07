@@ -53,6 +53,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { DEPARTMENTS_CONFIG } from '@/config/departments';
 
 export default function TaskManagement() {
   const { userDepartment } = useAuth();
@@ -238,16 +239,11 @@ export default function TaskManagement() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="milling">Milling Process</SelectItem>
-            <SelectItem value="briquette">Briquette Production</SelectItem>
-            <SelectItem value="hubtransfer">Hub Transfer & Inspection Checklist</SelectItem>
-            <SelectItem value="warehouseclosing">Warehouse Closing & Site Inspection</SelectItem>
-            <SelectItem value="huboffloading">Offloading Rice from Hubs Checklist</SelectItem>
-            <SelectItem value="warehousemaintenance">Warehouse Maintenance Checklist</SelectItem>
-            <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
-            <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
-            <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
-
+            {DEPARTMENTS_CONFIG.find(d => d.id === userDepartment)?.checklists.map(checklistId => (
+              <SelectItem key={checklistId} value={checklistId}>
+                {checklistId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -358,31 +354,21 @@ export default function TaskManagement() {
                 <Label>Type</Label>
                 <Select
                   value={formData.checklistType}
-                  onValueChange={(val) => {  // ← Also note: it's onValueChange, not onChange for shadcn Select
+                  onValueChange={(val) => {
                     setFormData(prev => ({
                       ...prev,
                       checklistType: val,
-                      checklistName: val === 'milling'
-                        ? 'Milling Process Checklist'
-                        : val === 'briquette'
-                          ? 'Briquette Production Checklist'
-                          : val === 'hubcollection'
-                            ? 'Hub Collection & Offloading Checklist'
-                            : val === 'warehousemaintenance'
-                              ? 'Warehouse Maintenance Checklist'
-                              : val === 'warehouseinventory'
-                                ? 'Warehouse Inventory Audit'
-                                : 'Unknown Checklist'
+                      checklistName: val.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
                     }));
                   }}
                 >
                   <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="milling">Milling Process</SelectItem>
-                    <SelectItem value="briquette">Briquette Production</SelectItem>
-                    <SelectItem value="hubcollection">Hub Collection & Offloading</SelectItem>
-                    <SelectItem value="warehousemaintenance">Warehouse Maintenance</SelectItem>
-                    <SelectItem value="warehouseinventory">Warehouse Inventory Audit</SelectItem>
+                    {DEPARTMENTS_CONFIG.find(d => d.id === userDepartment)?.checklists.map(checklistId => (
+                      <SelectItem key={checklistId} value={checklistId}>
+                        {checklistId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

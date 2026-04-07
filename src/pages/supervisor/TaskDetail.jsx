@@ -16,6 +16,11 @@ import { warehouseClosingChecklistConfig } from '@/features/warehousing/config/w
 import { hubCollectionChecklistConfig } from '@/features/warehousing/config/hubCollectionChecklistConfig';
 import { warehouseMaintenanceChecklistConfig } from '@/features/warehousing/config/warehouseMaintenanceChecklist';
 import { warehouseInventoryChecklistConfig } from '@/features/warehousing/config/warehouseInventoryChecklist';
+import { loadingDispatchChecklistConfig } from '@/features/warehousing/config/loadingProduceConfig';
+import { outreachEngagementChecklistConfig } from '@/features/data-field/config/outreachEngagementChecklist';
+import { salesMarketingChecklistConfig } from '@/features/data-field/config/salesMarketingChecklist';
+import { fieldMonitoringQAChecklistConfig } from '@/features/data-field/config/Fieldmonitoringqachecklist';
+import { dataCallCentreOversightChecklistConfig } from '@/features/data-field/config/Datacallcentreoversightchecklist';
 import { GGEM_LOCATIONS } from '@/lib/locations';
 
 // Config Lookup Strategy
@@ -27,7 +32,11 @@ const CHECKLIST_CONFIGS = {
   'hubcollection': hubCollectionChecklistConfig,
   'warehousemaintenance': warehouseMaintenanceChecklistConfig,
   'warehouseinventory': warehouseInventoryChecklistConfig,
-  // Future checklists can be added here easily
+  'loading': loadingDispatchChecklistConfig,
+  'outreach-engagement': outreachEngagementChecklistConfig,
+  'sales-marketing': salesMarketingChecklistConfig,
+  'field-monitoring-qa': fieldMonitoringQAChecklistConfig,
+  'data-callcentre-oversight': dataCallCentreOversightChecklistConfig,
 };
 
 export default function TaskDetail() {
@@ -227,6 +236,7 @@ export default function TaskDetail() {
               onSubmit={handleChecklistComplete}
               taskId={task.id}
               expectedLocation={task.location}
+              taskData={task}
             />
           ) : (
             <Alert variant="destructive">

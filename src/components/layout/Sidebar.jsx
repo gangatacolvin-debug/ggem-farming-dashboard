@@ -40,7 +40,7 @@ export default function Sidebar() {
         ];
 
       case 'manager':
-        return [
+        const managerNav = [
           { name: 'Dashboard', href: '/dashboard/manager', icon: LayoutDashboard },
           { name: 'Task Management', href: '/dashboard/manager/tasks', icon: ClipboardList },
           { name: 'Live Monitoring', href: '/dashboard/manager/monitoring', icon: CheckSquare },
@@ -48,6 +48,12 @@ export default function Sidebar() {
           { name: 'Schedules', href: '/dashboard/manager/schedules', icon: Calendar },
           { name: 'Team Performance', href: '/dashboard/manager/reports', icon: BarChart3 },
         ];
+
+        if (userDepartment === 'data-and-field') {
+          managerNav.push({ name: 'Collector Scorecard', href: '/dashboard/manager/scorecard', icon: ClipboardList });
+        }
+
+        return managerNav;
 
       case 'supervisor':
         return [

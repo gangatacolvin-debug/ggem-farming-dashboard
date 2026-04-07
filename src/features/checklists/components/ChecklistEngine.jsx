@@ -41,6 +41,9 @@ import DateField from './fields/DateField';
 import SelectField from './fields/SelectField';
 import TimeField from './fields/TimeField';
 import TextareaField from './fields/TextareaField';
+import FirestoreSelectField from './fields/FirestoreSelectField';
+import FirestoreMultiselectField from './fields/FirestoreMultiselectField';
+import FirestoreMultiselectWithManualField from './fields/FirestoreMultiselectWithManualField';
 import { GGEM_LOCATIONS } from '@/lib/locations';
 
 /**
@@ -88,6 +91,12 @@ const FieldRenderer = ({ field, checklistType }) => {
       return <DateField field={field} />;
     case 'time':
       return <TimeField field={field} />;
+    case 'firestore-select':
+      return <FirestoreSelectField field={field} />;
+    case 'firestore-multiselect':
+      return <FirestoreMultiselectField field={field} />;
+    case 'firestore-multiselect-with-manual':
+      return <FirestoreMultiselectWithManualField field={field} />;
     case 'info':
       return (
         <Alert className="bg-blue-50 border-blue-200">

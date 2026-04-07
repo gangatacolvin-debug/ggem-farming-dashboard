@@ -18,6 +18,32 @@ export default function SummaryField({ field, checklistType }) {
     const handlingLosses = useWatch({ control, name: 'handling-losses' });
     const damagedBags = useWatch({ control, name: 'damaged-bags-count' });
 
+    // Outreach & Engagement Specific Watches
+    const sessionsHeld = useWatch({ control, name: 'sessions-held-count' });
+    const participantsReached = useWatch({ control, name: 'participants-reached' });
+    const newGroups = useWatch({ control, name: 'new-groups' });
+    const womenParticipants = useWatch({ control, name: 'women-participants' });
+
+    // Sales & Marketing Specific Watches
+    const salesVolume = useWatch({ control, name: 'sales-volume-units' });
+    const salesValue = useWatch({ control, name: 'sales-value-mwk' });
+    const customerVisits = useWatch({ control, name: 'customer-visits-count' });
+    const leadsConverted = useWatch({ control, name: 'leads-converted-count' });
+
+    // Field Monitoring & QA Watches
+    const sitesVisitedCount = useWatch({ control, name: 'sites-visited-count' });
+    const spotChecksCount = useWatch({ control, name: 'spot-checks-count' });
+    const dataAccuracyPct = useWatch({ control, name: 'data-accuracy-pct' });
+
+    // Data & Call Centre Watches 
+    const activeAgentsCount = useWatch({ control, name: 'active-agents-count' });
+    const callsMadeCount = useWatch({ control, name: 'calls-made-count' });
+    const farmersReachedCount = useWatch({ control, name: 'farmers-reached-count' });
+    const verifiedEntriesPct = useWatch({ control, name: 'verified-entries-pct' });
+
+    // Shared Watches across Field Monitoring & Call Centre
+    const issuesFlaggedCount = useWatch({ control, name: 'issues-flagged-count' });
+    const issuesResolvedCount = useWatch({ control, name: 'issues-resolved-count' });
 
     // Helper to safely parse numbers
     const safeParse = (val) => {
@@ -74,6 +100,165 @@ export default function SummaryField({ field, checklistType }) {
                             <p className={`text-xl font-bold ${safeParse(damagedBags) > 0 ? 'text-red-600' : 'text-green-600'}`}>
                                 {damagedBags || 0}
                             </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        )
+    }
+
+    if (checklistType === 'outreach-engagement') {
+        const sessions = safeParse(sessionsHeld);
+        const participants = safeParse(participantsReached);
+        const groups = safeParse(newGroups);
+        const women = safeParse(womenParticipants);
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">
+                    Outreach & Engagement Real-time Summary
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Sessions Held</Label>
+                            <p className="text-2xl font-bold text-primary">{sessions}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Participants Reached</Label>
+                            <p className="text-2xl font-bold text-green-600">{participants}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">New Groups Identified</Label>
+                            <p className="text-2xl font-bold text-blue-600">{groups}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Women Participants</Label>
+                            <p className="text-2xl font-bold text-primary">{women}%</p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
+    if (checklistType === 'sales-marketing') {
+        const parsedVolume = safeParse(salesVolume);
+        const parsedValue = safeParse(salesValue);
+        const parsedVisits = safeParse(customerVisits);
+        const parsedLeads = safeParse(leadsConverted);
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">Sales & Marketing Real-time Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Visits</Label>
+                            <p className="text-2xl font-bold text-primary">{parsedVisits}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Sales Volume</Label>
+                            <p className="text-2xl font-bold text-green-600">{parsedVolume}</p>
+                            <p className="text-xs text-slate-400">units/kg</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Sales Value</Label>
+                            <p className="text-2xl font-bold text-green-600">MWK {parsedValue.toLocaleString()}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Leads Converted</Label>
+                            <p className="text-2xl font-bold text-blue-600">{parsedLeads}</p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        )
+    }
+
+    if (checklistType === 'field-monitoring-qa') {
+        const sites = safeParse(sitesVisitedCount);
+        const spots = safeParse(spotChecksCount);
+        const flagged = safeParse(issuesFlaggedCount);
+        const resolved = safeParse(issuesResolvedCount);
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">Field Monitoring & QA Real-time Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Sites Visited</Label>
+                            <p className="text-2xl font-bold text-primary">{sites}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Spot Checks</Label>
+                            <p className="text-2xl font-bold text-blue-600">{spots}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Issues Flagged</Label>
+                            <p className="text-2xl font-bold text-orange-600">{flagged}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Issues Resolved</Label>
+                            <p className="text-2xl font-bold text-green-600">{resolved}</p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        )
+    }
+
+    if (checklistType === 'data-callcentre-oversight') {
+        const activeAgents = safeParse(activeAgentsCount);
+        const callsMade = safeParse(callsMadeCount);
+        const farmersReached = safeParse(farmersReachedCount);
+        const verifiedEntries = safeParse(verifiedEntriesPct);
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">Data & Call Centre Real-time Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Active Agents</Label>
+                            <p className="text-2xl font-bold text-primary">{activeAgents}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Calls Made</Label>
+                            <p className="text-2xl font-bold text-blue-600">{callsMade}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Farmers Reached</Label>
+                            <p className="text-2xl font-bold text-green-600">{farmersReached}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Data Accuracy</Label>
+                            <p className="text-2xl font-bold text-primary">{verifiedEntries}%</p>
                         </CardContent>
                     </Card>
                 </div>

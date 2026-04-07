@@ -14,6 +14,7 @@ import ManagerSchedules from '@/pages/manager/ManagerSchedules';
 import ManagerReports from '@/pages/manager/ManagerReports';
 import ManagerTaskDetail from '@/pages/manager/ManagerTaskDetail';
 import ManagerInventory from '@/pages/manager/ManagerInventory';
+import ManagerScorecard from '@/pages/manager/ManagerScorecard';
 import MySubmissions from '@/pages/supervisor/MySubmissions';
 import SupervisorPerformance from '@/pages/supervisor/SupervisorPerformance';
 import LeadershipDashboard from '@/pages/leadership/LeadershipDashboard';
@@ -143,6 +144,14 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={['manager']}>
                     <ManagerInventory />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="scorecard"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <ManagerScorecard />
                   </ProtectedRoute>
                 }
               />
