@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, where, onSnapshot, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import {
   Activity
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   BarChart,
   Bar,
@@ -30,7 +31,7 @@ import {
 } from 'recharts';
 
 export default function ManagerDashboard() {
-  const { currentUser, userDepartment } = useAuth();
+  const { currentUser, userDepartment, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalTasks: 0,
@@ -45,7 +46,14 @@ export default function ManagerDashboard() {
   const [chartData, setChartData] = useState([]);
 
   useEffect(() => {
-    if (!currentUser || !userDepartment) return;
+    if (authLoading) return;
+
+    if (!currentUser || !userDepartment) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
 
     // Fetch all tasks for this department
     const tasksQuery = query(
@@ -124,7 +132,7 @@ export default function ManagerDashboard() {
     fetchSupervisors();
 
     return () => unsubscribe();
-  }, [currentUser, userDepartment]);
+  }, [currentUser, userDepartment, authLoading]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -135,10 +143,33 @@ export default function ManagerDashboard() {
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!userDepartment) {
+    return (
+      <div className="max-w-lg space-y-4">
+        <Alert variant="destructive">
+          <AlertTitle>Department missing on your profile</AlertTitle>
+          <AlertDescription className="mt-2 space-y-2">
+            <p>
+              The manager dashboard filters tasks by your <code className="text-xs bg-muted px-1 rounded">department</code>{' '}
+              field in Firestore. Yours is not set, so the page cannot load data.
+            </p>
+            <p className="text-sm">
+              In Firebase Console → Firestore → <code className="text-xs bg-muted px-1 rounded">users</code> → your user
+              document, add a string field <strong>department</strong> with the same value used on tasks (e.g.{' '}
+              <code className="text-xs bg-muted px-1 rounded">aggregation</code>), plus{' '}
+              <strong>role</strong>: <code className="text-xs bg-muted px-1 rounded">manager</code>.
+            </p>
+            <p className="text-sm">After saving, refresh this page.</p>
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }

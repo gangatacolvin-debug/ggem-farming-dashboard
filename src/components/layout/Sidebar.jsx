@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { usesFieldWorkerDashboard } from '@/config/fieldPortal';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -12,11 +13,13 @@ import {
   CheckSquare,
   FileText,
   Package,
+  MapPin
 } from 'lucide-react';
 
 export default function Sidebar() {
   const { userRole, userDepartment } = useAuth();
   const location = useLocation();
+  const isFieldWorker = usesFieldWorkerDashboard(userRole, userDepartment);
 
   // Navigation items based on role
   const getNavigationItems = () => {
@@ -47,7 +50,13 @@ export default function Sidebar() {
           { name: 'Submissions Review', href: '/dashboard/manager/submissions', icon: FileText },
           { name: 'Schedules', href: '/dashboard/manager/schedules', icon: Calendar },
           { name: 'Team Performance', href: '/dashboard/manager/reports', icon: BarChart3 },
+          { name: 'Inventory', href: '/dashboard/manager/inventory', icon: Package },
         ];
+
+        if (userDepartment === 'aggregation') {
+          managerNav.push({ name: 'Aggregation Hub', href: '/dashboard/manager/aggregation-hub', icon: CheckSquare });
+          managerNav.push({ name: 'Hub Management', href: '/dashboard/manager/hub-management', icon: MapPin });
+        }
 
         if (userDepartment === 'data-and-field') {
           managerNav.push({ name: 'Collector Scorecard', href: '/dashboard/manager/scorecard', icon: ClipboardList });
@@ -55,16 +64,14 @@ export default function Sidebar() {
 
         return managerNav;
 
-      case 'supervisor':
-        return [
-          { name: 'Dashboard', href: '/dashboard/supervisor', icon: LayoutDashboard },
-          { name: 'My Tasks', href: '/dashboard/supervisor/tasks', icon: ClipboardList },
-          { name: 'My Submissions', href: '/dashboard/supervisor/submissions', icon: FileText },
-          { name: 'Active Task', href: '/dashboard/supervisor/active', icon: CheckSquare },
-          { name: 'Performance', href: '/dashboard/supervisor/performance', icon: BarChart3 },
-        ];
-
       default:
+        if (isFieldWorker) {
+          return [
+            { name: 'My dashboard', href: '/dashboard/supervisor', icon: LayoutDashboard },
+            { name: 'My submissions', href: '/dashboard/supervisor/submissions', icon: FileText },
+            { name: 'Performance', href: '/dashboard/supervisor/performance', icon: BarChart3 },
+          ];
+        }
         return [];
     }
   };
@@ -72,7 +79,7 @@ export default function Sidebar() {
   const navigationItems = getNavigationItems();
 
   return (
-    <aside className="w-64 bg-primary text-white flex flex-col">
+    <aside className="hidden lg:flex w-64 bg-primary text-white flex-col">
       {/* Logo Section */}
       <div className="h-16 flex items-center justify-center border-b border-white/10">
         <div className="flex items-center space-x-3">

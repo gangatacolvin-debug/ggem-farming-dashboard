@@ -17,6 +17,8 @@ export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [userDepartment, setUserDepartment] = useState(null);
+  const [hubAssignments, setHubAssignments] = useState([]);
+  const [currentHub, setCurrentHub] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Login function
@@ -30,6 +32,8 @@ export const AuthProvider = ({ children }) => {
         const userData = userDoc.data();
         setUserRole(userData.role);
         setUserDepartment(userData.department);
+        setHubAssignments(userData.hubAssignments || []);
+        setCurrentHub(userData.currentHub || null);
       }
     } catch (error) {
       console.warn("Fetched user profile failed (permission issue?):", error);
@@ -56,10 +60,14 @@ export const AuthProvider = ({ children }) => {
             const userData = userDoc.data();
             setUserRole(userData.role);
             setUserDepartment(userData.department);
+            setHubAssignments(userData.hubAssignments || []);
+            setCurrentHub(userData.currentHub || null);
           }
         } else {
           setUserRole(null);
           setUserDepartment(null);
+          setHubAssignments([]);
+          setCurrentHub(null);
         }
       } catch (error) {
         console.error("Error fetching user data:", error);
@@ -75,6 +83,8 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     userRole,
     userDepartment,
+    hubAssignments,
+    currentHub,
     login,
     logout,
     loading

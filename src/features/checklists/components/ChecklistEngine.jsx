@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { useForm, FormProvider } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,10 +42,20 @@ import DateField from './fields/DateField';
 import SelectField from './fields/SelectField';
 import TimeField from './fields/TimeField';
 import TextareaField from './fields/TextareaField';
-import FirestoreSelectField from './fields/FirestoreSelectField';
-import FirestoreMultiselectField from './fields/FirestoreMultiselectField';
-import FirestoreMultiselectWithManualField from './fields/FirestoreMultiselectWithManualField';
+import FirestoreSelectField from './fields/Firestoreselectfield';
+import FirestoreMultiselectField from './fields/Firestoremultiselectfield';
+import FirestoreMultiselectWithManualField from './fields/Firestoremultiselectwithmanualfield';
+import FarmerLookupField from './fields/FarmerLookupField';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { GGEM_LOCATIONS } from '@/lib/locations';
+import { useAuth } from '@/context/AuthContext';
+import {
+  AGGREGATION_NON_ADMIN_CHECKLIST_IDS,
+  fetchActiveAggregationSessionForUser,
+  fetchActiveAggregationSessionAtHub,
+  formatAggregationHubDisplay,
+} from '@/features/aggregation/lib/aggregationSessions';
 
 /**
  * Calculates distance in meters between two coordinates
@@ -97,6 +108,8 @@ const FieldRenderer = ({ field, checklistType }) => {
       return <FirestoreMultiselectField field={field} />;
     case 'firestore-multiselect-with-manual':
       return <FirestoreMultiselectWithManualField field={field} />;
+    case 'farmer-lookup':
+      return <FarmerLookupField field={field} />;
     case 'info':
       return (
         <Alert className="bg-blue-50 border-blue-200">
@@ -144,6 +157,13 @@ export default function ChecklistEngine({
   const [showHandoffDialog, setShowHandoffDialog] = useState(false);
   const [handoffReason, setHandoffReason] = useState('');
   const [handoffLoading, setHandoffLoading] = useState(false);
+  /** Step 4: active session already open at selected hub (pre-aggregation only). */
+  const [preAggHubClash, setPreAggHubClash] = useState(null);
+
+  const { currentUser } = useAuth();
+
+  // Ref map to track each section's DOM element for auto-scroll
+  const sectionRefs = useRef({});
 
   const formMethods = useForm({
     defaultValues: initialData,
@@ -151,6 +171,21 @@ export default function ChecklistEngine({
   });
 
   const { handleSubmit, formState: { isValid }, setValue, watch, getValues } = formMethods;
+  const watchedPreAggHub = watch('hub');
+
+  // Auto-calculation for Weighing Checklist (Cross-section)
+  const weighingLogs = watch('farmer-weighing-logs');
+  useEffect(() => {
+    if (config.id === 'aggregation-weighing-recording' && Array.isArray(weighingLogs)) {
+      const farmers = weighingLogs.length;
+      const weight = weighingLogs.reduce((sum, row) => sum + (parseFloat(row.weightKg) || 0), 0);
+      const gross = weighingLogs.reduce((sum, row) => sum + (parseFloat(row.grossAmount) || 0), 0);
+      
+      setValue('total-farmers-weighed', farmers, { shouldValidate: true });
+      setValue('total-weight-kg', weight, { shouldValidate: true });
+      setValue('total-gross-amount', gross, { shouldValidate: true });
+    }
+  }, [weighingLogs, config.id, setValue]);
 
   // Auto-populate Fields Logic
   useEffect(() => {
@@ -163,6 +198,15 @@ export default function ChecklistEngine({
           // Only populate if empty to avoid overwriting user edits (unless it's a live timestamp)
           if (!currentValue) {
             let valueToSet = '';
+
+            // Handle session inheritance (Step 3/7)
+            if (field.autoPopulateFromSession) {
+              const sessionId = getValues('session-id-ref') || getValues('session-id');
+              if (sessionId) {
+                // We'll use a cached session lookup or wait for the useEffect below
+                // For now, let's let the session-specific effect handle this
+              }
+            }
 
             switch (field.autoPopulate) {
               case 'date':
@@ -192,6 +236,101 @@ export default function ChecklistEngine({
       });
     });
   }, [taskData, config, setValue, getValues, activeSection]); // Re-run when section changes to update timestamps
+
+  // Step 3: pre-fill session-id-ref + hub from aggregationSessions for non-admin aggregation checklists
+  useEffect(() => {
+    if (!currentUser?.uid || !AGGREGATION_NON_ADMIN_CHECKLIST_IDS.has(config.id)) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const session = await fetchActiveAggregationSessionForUser(currentUser.uid);
+        if (cancelled || !session) return;
+
+        const currentRef = getValues('session-id-ref');
+        const currentHub = getValues('hub');
+
+        if (!currentRef && session.sessionId) {
+          setValue('session-id-ref', session.sessionId, { shouldValidate: true, shouldDirty: true });
+        }
+
+        if (!currentHub && session.hub) {
+          setValue('hub', formatAggregationHubDisplay(session.hub), {
+            shouldValidate: true,
+            shouldDirty: true,
+          });
+        }
+
+        // AUTO-INHERIT SESSION DATA (Burden 3)
+        // If the session has expectedFarmers, populate it
+        const sessionRef = doc(db, 'aggregationSessions', session.firestoreDocId);
+        const sessionSnap = await getDoc(sessionRef);
+        if (sessionSnap.exists()) {
+          const sData = sessionSnap.data();
+          config.sections.forEach(sec => {
+            sec.fields.forEach(f => {
+              if (f.autoPopulateFromSession && sData[f.autoPopulateFromSession]) {
+                const curVal = getValues(f.id);
+                if (!curVal) {
+                  setValue(f.id, sData[f.autoPopulateFromSession], { shouldValidate: true });
+                }
+              }
+            });
+          });
+        }
+      } catch (e) {
+        console.warn('Aggregation session auto-fill failed:', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [config.id, currentUser?.uid, setValue, getValues]);
+
+  // Pre-aggregation: generate read-only Session ID once per open
+  useEffect(() => {
+    if (config.id !== 'pre-aggregation-setup') return;
+    const sid = getValues('session-id');
+    if (sid) return;
+
+    // Generate ID including date: AGG-YYYYMMDD-6CHAR
+    const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const random = crypto.randomUUID().replace(/-/g, '').slice(0, 7).toUpperCase();
+    const generated = `AGG-${dateStr}-${random}`;
+    
+    setValue('session-id', generated, { shouldValidate: true, shouldDirty: true });
+  }, [config.id, taskId, setValue, getValues]);
+
+
+  // Step 4: hub clash — block submit if another active session exists at this hub
+  useEffect(() => {
+    if (config.id !== 'pre-aggregation-setup') {
+      setPreAggHubClash(null);
+      return;
+    }
+    if (!watchedPreAggHub) {
+      setPreAggHubClash(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const clash = await fetchActiveAggregationSessionAtHub(watchedPreAggHub);
+        if (cancelled) return;
+        setPreAggHubClash(clash);
+      } catch (e) {
+        console.warn('Hub clash check failed:', e);
+        if (!cancelled) setPreAggHubClash(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [config.id, watchedPreAggHub]);
 
   // Watch for destination hub changes (for hub collection checklist)
   const destinationHub = watch('destination-hub') || watch('destinationHub');
@@ -386,35 +525,63 @@ export default function ChecklistEngine({
     const locationCheck = checkSectionLocationRequirement();
 
     if (locationCheck.required && !locationCheck.verified) {
-      alert(`Cannot complete section: ${locationCheck.message}`);
+      toast.error('Location Required', {
+        description: locationCheck.message,
+        duration: 5000,
+      });
       return;
     }
 
     const completion = getSectionCompletion(config.sections.find(s => s.id === activeSection));
 
     if (completion < 100) {
-      const proceed = window.confirm('This section is not 100% complete. Continue anyway?');
-      if (!proceed) return;
+      toast.warning('Section Incomplete', {
+        description: 'Some required fields are missing. Marking as complete anyway.',
+        duration: 4000,
+      });
     }
 
     if (!completedSections.includes(activeSection)) {
       setCompletedSections([...completedSections, activeSection]);
     }
 
-    // Move to next section
+    // Move to next section + smooth scroll
     const currentIndex = config.sections.findIndex(s => s.id === activeSection);
     if (currentIndex < config.sections.length - 1) {
-      setActiveSection(config.sections[currentIndex + 1].id);
+      const nextSection = config.sections[currentIndex + 1];
+      setActiveSection(nextSection.id);
+      toast.success('Section Complete ✓', { duration: 2000 });
+
+      // Scroll to the next section after React re-renders it open
+      setTimeout(() => {
+        const el = sectionRefs.current[nextSection.id];
+        if (el) {
+          const top = el.getBoundingClientRect().top + window.scrollY - 88; // offset for sticky header
+          window.scrollTo({ top, behavior: 'smooth' });
+        }
+      }, 150);
+    } else {
+      toast.success('All sections done! Ready to submit.', { duration: 3000 });
     }
   };
 
   const onFormSubmit = (data) => {
+    if (config.id === 'pre-aggregation-setup' && preAggHubClash) {
+      toast.error('Session Already Active', {
+        description: 'An active aggregation session already exists at this hub. Choose another hub or close the existing session first.',
+        duration: 6000,
+      });
+      return;
+    }
+
     // Check if all sections are completed
     const allCompleted = config.sections.every(s => completedSections.includes(s.id));
 
     if (!allCompleted) {
-      const proceed = window.confirm('Not all sections are marked complete. Submit anyway?');
-      if (!proceed) return;
+      toast.warning('Incomplete Sections', {
+        description: 'Submitting with incomplete sections. This will be flagged for review.',
+        duration: 4000,
+      });
     }
 
     if (onSubmit) {
@@ -426,11 +593,39 @@ export default function ChecklistEngine({
         finalSection: activeSection
       });
     }
+
+    // CLOSE SESSION TRIGGER (Pillar 4)
+    if (config.closeSessionOnSubmit) {
+      const sessionIdRef = data['session-id-ref'] || data['session-id'];
+      if (sessionIdRef) {
+        (async () => {
+          try {
+            const { collection, query, where, getDocs, updateDoc } = await import('firebase/firestore');
+            const q = query(collection(db, 'aggregationSessions'), where('sessionId', '==', sessionIdRef));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+              await updateDoc(snap.docs[0].ref, {
+                status: 'closed',
+                closedAt: new Date(),
+                closedBy: currentUser.uid
+              });
+              toast.success('Session Closed', {
+                description: `Session ${sessionIdRef} has been successfully closed.`,
+                duration: 5000,
+              });
+            }
+          } catch (err) {
+            console.error('Failed to close session:', err);
+            toast.error('Close Failed', { description: 'Could not close the session. Please try again.' });
+          }
+        })();
+      }
+    }
   };
 
   const handleEndEarly = async () => {
     if (!exitReason.trim()) {
-      alert("Please provide a reason.");
+      toast.warning('Reason Required', { description: 'Please provide a reason before ending early.' });
       return;
     }
 
@@ -454,13 +649,14 @@ export default function ChecklistEngine({
       });
     }
 
+    toast.info('Checklist Ended Early', { description: `Reason: ${exitReason}`, duration: 4000 });
     setExitLoading(false);
     setShowExitDialog(false);
   };
 
   const handleHandoff = async () => {
     if (!handoffReason.trim()) {
-      alert("Please provide a reason for handoff.");
+      toast.warning('Reason Required', { description: 'Please provide a reason for the handoff.' });
       return;
     }
 
@@ -483,11 +679,14 @@ export default function ChecklistEngine({
         currentSection: activeSection
       });
 
-      alert('Handoff requested. Manager will reassign this task.');
+      toast.success('Handoff Requested ✓', {
+        description: 'Your manager has been notified and will reassign this task.',
+        duration: 5000,
+      });
       setShowHandoffDialog(false);
     } catch (error) {
       console.error('Handoff error:', error);
-      alert('Failed to request handoff');
+      toast.error('Handoff Failed', { description: 'Could not request handoff. Please try again.' });
     } finally {
       setHandoffLoading(false);
     }
@@ -499,40 +698,47 @@ export default function ChecklistEngine({
 
         {/* Header with Progress */}
         <div className="bg-white border-b sticky top-0 z-10 shadow-sm">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex-1">
-                <h1 className="text-2xl font-bold text-gray-900">{config.title}</h1>
+          <div className="p-3 lg:p-6">
+            <div className="flex items-start justify-between mb-3 lg:mb-4 gap-3">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-base sm:text-lg lg:text-2xl font-bold text-gray-900 leading-tight">{config.title}</h1>
                 {config.description && (
-                  <p className="text-sm text-gray-600 mt-1">{config.description}</p>
+                  <p className="text-xs lg:text-sm text-gray-600 mt-0.5 lg:mt-1 hidden sm:block">{config.description}</p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 lg:gap-2 flex-shrink-0">
+                {/* Mobile: icon buttons only */}
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                  className="text-orange-600 border-orange-200 hover:bg-orange-50 px-2 lg:px-3"
                   onClick={() => setShowHandoffDialog(true)}
+                  title="Request Handoff"
                 >
-                  Request Handoff
+                  <span className="hidden sm:inline">Request Handoff</span>
+                  <span className="sm:hidden text-xs">Handoff</span>
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="text-red-600 border-red-200 hover:bg-red-50"
+                  className="text-red-600 border-red-200 hover:bg-red-50 px-2 lg:px-3"
                   onClick={() => setShowExitDialog(true)}
+                  title="End Early"
                 >
-                  End Early
+                  <span className="hidden sm:inline">End Early</span>
+                  <span className="sm:hidden text-xs">Exit</span>
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!isValid}
-                  className="bg-green-600 hover:bg-green-700"
+                  size="sm"
+                  disabled={!isValid || !!preAggHubClash}
+                  className="bg-green-600 hover:bg-green-700 px-2 lg:px-4"
                 >
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Complete & Submit
+                  <CheckCircle2 className="w-4 h-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Complete &amp; Submit</span>
+                  <span className="lg:hidden text-xs ml-1">Submit</span>
                 </Button>
               </div>
             </div>
@@ -552,6 +758,18 @@ export default function ChecklistEngine({
                 <Save className="w-3 h-3" />
                 <span>Last saved: {lastSaved.toLocaleTimeString()}</span>
               </div>
+            )}
+
+            {config.id === 'pre-aggregation-setup' && preAggHubClash && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  An active aggregation session is already open at this hub (session ID:{' '}
+                  <strong>{preAggHubClash.sessionId}</strong>). You cannot start another session here until
+                  that session is closed. Select a different hub or ask a manager to close the existing
+                  session.
+                </AlertDescription>
+              </Alert>
             )}
           </div>
 
@@ -606,7 +824,7 @@ export default function ChecklistEngine({
         </div>
 
         {/* Section Navigation - Accordion Style */}
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-3 lg:px-6">
           <Accordion
             type="single"
             collapsible
@@ -627,6 +845,7 @@ export default function ChecklistEngine({
                   key={section.id}
                   value={section.id}
                   disabled={!isAccessible}
+                  ref={(el) => { sectionRefs.current[section.id] = el; }}
                   className={`border-2 rounded-lg overflow-hidden transition-all ${isCompleted ? 'border-green-500 bg-green-50/30' :
                     isActive ? 'border-blue-500 bg-blue-50/30' :
                       isAccessible ? 'border-gray-200' :

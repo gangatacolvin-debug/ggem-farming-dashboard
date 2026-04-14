@@ -4,7 +4,7 @@ import { calculateProcessingKPIs, calculateWarehousingKPIs, getDepartmentAlerts 
 import { Activity, AlertTriangle, Package, TrendingUp } from 'lucide-react';
 import WarehouseProcessingDashboard from './WarehouseProcessingDashboard';
 
-export default function DepartmentCharts({ activeTab, tasks }) {
+export default function DepartmentCharts({ activeTab, tasks, liveTasks = [] }) {
 
     // Only render complete tasks
     const completedTasks = tasks.filter(t => t.status === 'completed');
@@ -63,8 +63,8 @@ export default function DepartmentCharts({ activeTab, tasks }) {
         );
     }
 
-    if (activeTab === 'warehouse-and-processing') {
-        return <WarehouseProcessingDashboard tasks={completedTasks} liveTasks={tasks.filter(t => t.status !== 'completed')} />;
+    if (activeTab === 'warehouse') {
+        return <WarehouseProcessingDashboard tasks={completedTasks} liveTasks={liveTasks} />;
     }
 
     return null;

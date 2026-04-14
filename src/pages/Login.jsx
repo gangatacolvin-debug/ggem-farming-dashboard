@@ -12,18 +12,18 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     try {
       setError('');
       setLoading(true);
       await login(email, password);
-      
+
       // Navigation will be handled by App.jsx based on user role
       navigate('/dashboard');
     } catch (err) {
@@ -39,11 +39,13 @@ export default function Login() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center">
-              <span className="text-2xl font-bold text-white">GG</span>
-            </div>
+            <img
+              src="/Copy of Copy of GGEM_full_colour_logo 3.svg"
+              alt="GGEM Farming Logo"
+              className="w-100 h-100 object-contain scale-75"
+            />
           </div>
-          <CardTitle className="text-2xl text-center">GGEM Farming</CardTitle>
+          <CardTitle className="text-2xl text-center">checklist-portal</CardTitle>
           <CardDescription className="text-center">
             Sign in to your account to continue
           </CardDescription>
@@ -55,7 +57,7 @@ export default function Login() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -67,7 +69,7 @@ export default function Login() {
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
@@ -79,10 +81,10 @@ export default function Login() {
                 required
               />
             </div>
-            
-            <Button 
-              type="submit" 
-              className="w-full" 
+
+            <Button
+              type="submit"
+              className="w-full"
               disabled={loading}
             >
               {loading ? 'Signing in...' : 'Sign In'}

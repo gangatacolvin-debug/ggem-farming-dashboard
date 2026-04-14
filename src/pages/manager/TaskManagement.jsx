@@ -55,10 +55,22 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DEPARTMENTS_CONFIG } from '@/config/departments';
 
+function normalizeDepartment(dept) {
+  const raw = String(dept || '').toLowerCase().trim();
+  if (!raw) return '';
+
+  // Accept common naming variants from user profiles.
+  if (raw.includes('warehous')) return 'warehouse';
+  if (raw.includes('data') || raw.includes('field')) return 'data-field';
+  if (raw.includes('aggregat')) return 'aggregation';
+
+  return raw;
+}
+
 export default function TaskManagement() {
   const { userDepartment } = useAuth();
   const [tasks, setTasks] = useState([]);
-  const [supervisors, setSupervisors] = useState([]);
+  const [assignees, setAssignees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,22 +118,58 @@ export default function TaskManagement() {
       setLoading(false);
     });
 
-    // Fetch supervisors
-    const fetchSupervisors = async () => {
+    const fetchAssignees = async () => {
       try {
-        const supervisorsQuery = query(
-          collection(db, 'users'),
-          where('department', '==', userDepartment),
-          where('role', '==', 'supervisor')
-        );
-        const snapshot = await getDocs(supervisorsQuery);
-        setSupervisors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const usersRef = collection(db, 'users');
+        let allUsers = [];
+
+        // Robust department matching for Firestore queries
+        const qDepartment = normalizeDepartment(userDepartment);
+
+        console.log(`DEBUG: Manager Dept="${userDepartment}", Querying Firestore for Dept="${qDepartment}"`);
+
+        if (qDepartment === 'aggregation') {
+          // 1. Get everyone in aggregation department
+          const q1 = query(usersRef, where('department', '==', 'aggregation'));
+          const snap1 = await getDocs(q1);
+          
+          const q2 = query(usersRef, where('role', 'in', ['supervisor', 'hub-coordinator', 'security-lead', 'data-team', 'warehouse-supervisor']));
+          const snap2 = await getDocs(q2);
+
+          const usersMap = new Map();
+          snap1.docs.forEach(d => usersMap.set(d.id, { id: d.id, ...d.data() }));
+          snap2.docs.forEach(d => {
+            const data = d.data();
+            if (data.hubAssignments && data.hubAssignments.length > 0) {
+              usersMap.set(d.id, { id: d.id, ...data });
+            }
+          });
+          allUsers = Array.from(usersMap.values());
+        } else {
+          const q = query(usersRef, where('department', '==', qDepartment));
+          const snap = await getDocs(q);
+          allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+
+        const dept = DEPARTMENTS_CONFIG.find((d) => {
+          const managerDept = normalizeDepartment(userDepartment);
+          const configId = normalizeDepartment(d.id);
+          return configId === managerDept;
+        });
+        console.log(`DEBUG: Matched Config Dept="${dept?.id}", Found ${allUsers.length} total supervisors`);
+        const roleAllow = dept?.taskAssigneeRoles;
+
+        if (roleAllow?.length) {
+          setAssignees(allUsers.filter((u) => roleAllow.includes(u.role)));
+        } else {
+          setAssignees(allUsers.filter((u) => u.role === 'supervisor'));
+        }
       } catch (err) {
-        console.error("Error fetching supervisors:", err);
+        console.error('Error fetching assignees:', err);
       }
     };
 
-    fetchSupervisors();
+    fetchAssignees();
 
     return () => unsubscribe();
   }, [userDepartment]);
@@ -145,7 +193,7 @@ export default function TaskManagement() {
         scheduledDate: scheduledDate,
         shift: formData.shift,
         status: 'pending',
-        department: userDepartment,
+        department: normalizeDepartment(userDepartment),
         createdAt: new Date(),
         locationCompliant: null
       });
@@ -189,9 +237,34 @@ export default function TaskManagement() {
     }
   };
 
-  const getSupervisorName = (id) => {
-    const sup = supervisors.find(s => s.id === id);
-    return sup ? sup.name : 'Unknown';
+  const deptConfig = DEPARTMENTS_CONFIG.find((d) => {
+    const managerDept = normalizeDepartment(userDepartment);
+    const configId = normalizeDepartment(d.id);
+    return configId === managerDept;
+  });
+
+  const checklistLabel = (checklistType) => {
+    const custom = deptConfig?.checklistLabels?.[checklistType];
+    if (custom) return custom;
+    return checklistType
+      .replace(/-/g, ' ')
+      .replace(/\b\w/g, (l) => l.toUpperCase());
+  };
+
+  const allowedAssigneeRoles = deptConfig?.taskAssigneeRoles?.length
+    ? deptConfig.taskAssigneeRoles
+    : ['supervisor'];
+
+  const getAssigneeName = (id) => {
+    const u = assignees.find((a) => a.id === id);
+    if (!u) return 'Unknown';
+    return (
+      u.name ||
+      u.displayName ||
+      [u.firstName, u.lastName].filter(Boolean).join(' ').trim() ||
+      u.email ||
+      id
+    );
   };
 
   const getInitials = (name) => {
@@ -199,8 +272,9 @@ export default function TaskManagement() {
   };
 
   // Filter tasks
-  const filteredTasks = tasks.filter(task => {
-    const matchesSearch = task.checklistName.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredTasks = tasks.filter((task) => {
+    const name = (task.checklistName || '').toLowerCase();
+    const matchesSearch = name.includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'all' || task.checklistType === filterType;
     return matchesSearch && matchesType;
   });
@@ -238,10 +312,10 @@ export default function TaskManagement() {
             <SelectValue placeholder="Filter by Type" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {DEPARTMENTS_CONFIG.find(d => d.id === userDepartment)?.checklists.map(checklistId => (
+            <SelectItem value="all">All {deptConfig?.name || 'Department'} Types</SelectItem>
+            {deptConfig?.checklists.map((checklistId) => (
               <SelectItem key={checklistId} value={checklistId}>
-                {checklistId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                {checklistLabel(checklistId)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -257,7 +331,9 @@ export default function TaskManagement() {
               <thead className="bg-gray-50 text-gray-500 font-medium border-b">
                 <tr>
                   <th className="px-4 py-3">Task Name</th>
-                  <th className="px-4 py-3">Assigned Supervisor</th>
+                  <th className="px-4 py-3">
+                    {userDepartment === 'aggregation' ? 'Assigned to' : 'Assigned Supervisor'}
+                  </th>
                   <th className="px-4 py-3">Schedule</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -278,16 +354,18 @@ export default function TaskManagement() {
                           <div className={`w-2 h-2 rounded-full ${task.status === 'in-progress' ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'}`} />
                           {task.checklistName}
                         </div>
-                        <div className="text-xs text-gray-400 pl-4 mt-0.5 capitalize">{task.checklistType}</div>
+                        <div className="text-xs text-gray-400 pl-4 mt-0.5">
+                          {checklistLabel(task.checklistType)}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <Avatar className="h-6 w-6">
                             <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
-                              {getInitials(getSupervisorName(task.assignedTo))}
+                              {getInitials(getAssigneeName(task.assignedTo))}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="text-gray-700">{getSupervisorName(task.assignedTo)}</span>
+                          <span className="text-gray-700">{getAssigneeName(task.assignedTo)}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
@@ -342,7 +420,9 @@ export default function TaskManagement() {
           <DialogHeader>
             <DialogTitle>New Task Assignment</DialogTitle>
             <DialogDescription>
-              Create a new checklist assignment for a supervisor.
+              {userDepartment === 'aggregation'
+                ? 'Assign an aggregation checklist to a hub lead or field user. Their Firestore user must use department aggregation and one of the field roles (e.g. supervisor, hub-coordinator, security-lead).'
+                : 'Create a new checklist assignment for a supervisor.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -355,20 +435,23 @@ export default function TaskManagement() {
                 <Select
                   value={formData.checklistType}
                   onValueChange={(val) => {
-                    setFormData(prev => ({
+                    setFormData((prev) => ({
                       ...prev,
                       checklistType: val,
-                      checklistName: val.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                      checklistName: checklistLabel(val),
                     }));
                   }}
                 >
                   <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                   <SelectContent>
-                    {DEPARTMENTS_CONFIG.find(d => d.id === userDepartment)?.checklists.map(checklistId => (
+                    {deptConfig?.checklists.map((checklistId) => (
                       <SelectItem key={checklistId} value={checklistId}>
-                        {checklistId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        {checklistLabel(checklistId)}
                       </SelectItem>
                     ))}
+                    {!deptConfig && (
+                      <SelectItem value="none" disabled>No checklists for your department</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -382,18 +465,39 @@ export default function TaskManagement() {
             </div>
 
             <div className="space-y-2">
-              <Label>Assigned Supervisor</Label>
+              <Label>
+                {userDepartment === 'aggregation' ? 'Assign to' : 'Assigned Supervisor'}
+              </Label>
               <Select
                 value={formData.assignedTo}
                 onValueChange={(val) => setFormData({ ...formData, assignedTo: val })}
               >
-                <SelectTrigger><SelectValue placeholder="Select supervisor" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      userDepartment === 'aggregation'
+                        ? 'Select hub / field user'
+                        : 'Select supervisor'
+                    }
+                  />
+                </SelectTrigger>
                 <SelectContent>
-                  {supervisors.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  {assignees.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {`${getAssigneeName(u.id)}${u.role ? ` · ${u.role}` : ''}`}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {assignees.length === 0 && (
+                <Alert>
+                  <AlertDescription className="text-sm">
+                    No assignable supervisors found for {deptConfig?.name || 'your department'}. 
+                    Ensure staff have their <strong>department</strong> set to <strong>"{userDepartment}"</strong> and 
+                    <strong>role</strong> set to one of <strong>"{allowedAssigneeRoles.join('", "')}"</strong>.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -423,7 +527,7 @@ export default function TaskManagement() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateTask}>Assgin Task</Button>
+            <Button onClick={handleCreateTask}>Assign Task</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

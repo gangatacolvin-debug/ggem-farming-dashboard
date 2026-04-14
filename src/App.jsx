@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import MainLayout from '@/components/layout/MainLayout';
+import { Toaster } from '@/components/ui/sonner';
 import Login from '@/pages/Login';
 import Unauthorized from '@/pages/Unauthorized';
 import SupervisorDashboard from '@/pages/supervisor/SupervisorDashboard';
@@ -15,29 +16,34 @@ import ManagerReports from '@/pages/manager/ManagerReports';
 import ManagerTaskDetail from '@/pages/manager/ManagerTaskDetail';
 import ManagerInventory from '@/pages/manager/ManagerInventory';
 import ManagerScorecard from '@/pages/manager/ManagerScorecard';
+import AggregationSessionHub from '@/pages/manager/AggregationSessionHub';
+import HubManagement from '@/pages/manager/HubManagement';
 import MySubmissions from '@/pages/supervisor/MySubmissions';
 import SupervisorPerformance from '@/pages/supervisor/SupervisorPerformance';
 import LeadershipDashboard from '@/pages/leadership/LeadershipDashboard';
+import { usesFieldWorkerDashboard } from '@/config/fieldPortal';
 
 // Placeholder dashboard components (we'll create these next)
 const AdminDashboard = () => <div className="p-8"><h2 className="text-2xl font-bold">Admin Dashboard</h2><p className="text-gray-600 mt-2">Welcome to the admin dashboard</p></div>;
 
 // Dashboard Router Component
 function DashboardRouter() {
-  const { userRole } = useAuth();
+  const { userRole, userDepartment } = useAuth();
 
-  // Redirect to appropriate dashboard based on role
   if (userRole === 'admin') {
     return <Navigate to="/dashboard/admin" replace />;
-  } else if (userRole === 'leadership') {
+  }
+  if (userRole === 'leadership') {
     return <Navigate to="/dashboard/leadership" replace />;
-  } else if (userRole === 'manager') {
+  }
+  if (userRole === 'manager') {
     return <Navigate to="/dashboard/manager" replace />;
-  } else if (userRole === 'supervisor') {
+  }
+  if (usesFieldWorkerDashboard(userRole, userDepartment)) {
     return <Navigate to="/dashboard/supervisor" replace />;
   }
 
-  return <Navigate to="/login" replace />;
+  return <Navigate to="/unauthorized" replace />;
 }
 
 function App() {
@@ -155,28 +161,34 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="aggregation-hub"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <AggregationSessionHub />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="hub-management"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <HubManagement />
+                  </ProtectedRoute>
+                }
+              />
             </Route>
 
 
 
 
 
-            {/* Supervisor Routes */}
-            <Route
-              path="supervisor"
-              element={
-                <ProtectedRoute allowedRoles={['supervisor']}>
-                  <SupervisorDashboard />
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Supervisor Routes */}
+            {/* Field checklist portal (supervisor + aggregation operational roles) */}
             <Route path="supervisor">
               <Route
                 index
                 element={
-                  <ProtectedRoute allowedRoles={['supervisor']}>
+                  <ProtectedRoute allowFieldWorkerDashboard>
                     <SupervisorDashboard />
                   </ProtectedRoute>
                 }
@@ -184,16 +196,15 @@ function App() {
               <Route
                 path="task/:taskId"
                 element={
-                  <ProtectedRoute allowedRoles={['supervisor']}>
+                  <ProtectedRoute allowFieldWorkerDashboard>
                     <TaskDetail />
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="submissions"
                 element={
-                  <ProtectedRoute allowedRoles={['supervisor']}>
+                  <ProtectedRoute allowFieldWorkerDashboard>
                     <MySubmissions />
                   </ProtectedRoute>
                 }
@@ -201,7 +212,7 @@ function App() {
               <Route
                 path="performance"
                 element={
-                  <ProtectedRoute allowedRoles={['supervisor']}>
+                  <ProtectedRoute allowFieldWorkerDashboard>
                     <SupervisorPerformance />
                   </ProtectedRoute>
                 }
@@ -214,6 +225,7 @@ function App() {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>
+      <Toaster />
     </Router>
   );
 }

@@ -35,7 +35,7 @@ const KPICard = ({ title, value, subtext, icon: Icon, colorClass = 'text-blue-60
     </Card>
 );
 
-export default function WarehouseProcessingDashboard({ tasks, liveTasks }) {
+export default function WarehouseProcessingDashboard({ tasks, liveTasks, embedded = false }) {
     const [dateRange, setDateRange] = useState('7d');
 
     const millingData = useMemo(() => aggregateMillingData(tasks), [tasks]);
@@ -78,12 +78,30 @@ export default function WarehouseProcessingDashboard({ tasks, liveTasks }) {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Warehousing & Processing</h2>
-                    <p className="text-gray-500 mt-1">Detailed department metrics and trends</p>
+            {!embedded && (
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 className="text-2xl font-bold tracking-tight">Warehousing & Processing</h2>
+                        <p className="text-gray-500 mt-1">Detailed department metrics and trends</p>
+                    </div>
+                    <div className="flex gap-4">
+                        <select
+                            className="bg-white border rounded-md px-3 py-2 text-sm shadow-sm"
+                            value={dateRange}
+                            onChange={(e) => setDateRange(e.target.value)}
+                        >
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d">Last 30 Days</option>
+                            <option value="90d">This Quarter</option>
+                        </select>
+                        <button type="button" className="flex items-center gap-2 bg-white border border-gray-300 rounded-md px-4 py-2 text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors">
+                            <Download className="w-4 h-4" /> Export Report
+                        </button>
+                    </div>
                 </div>
-                <div className="flex gap-4">
+            )}
+            {embedded && (
+                <div className="flex justify-end mb-2">
                     <select
                         className="bg-white border rounded-md px-3 py-2 text-sm shadow-sm"
                         value={dateRange}
@@ -93,11 +111,8 @@ export default function WarehouseProcessingDashboard({ tasks, liveTasks }) {
                         <option value="30d">Last 30 Days</option>
                         <option value="90d">This Quarter</option>
                     </select>
-                    <button className="flex items-center gap-2 bg-white border border-gray-300 rounded-md px-4 py-2 text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors">
-                        <Download className="w-4 h-4" /> Export Report
-                    </button>
                 </div>
-            </div>
+            )}
 
             <Tabs defaultValue="overview" className="w-full">
                 <TabsList className="w-full justify-start border-b rounded-none bg-transparent h-auto p-0 space-x-6">

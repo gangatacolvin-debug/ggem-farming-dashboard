@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, updateDoc, collection, addDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, addDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,7 +22,20 @@ import { outreachEngagementChecklistConfig } from '@/features/data-field/config/
 import { salesMarketingChecklistConfig } from '@/features/data-field/config/salesMarketingChecklist';
 import { fieldMonitoringQAChecklistConfig } from '@/features/data-field/config/Fieldmonitoringqachecklist';
 import { dataCallCentreOversightChecklistConfig } from '@/features/data-field/config/Datacallcentreoversightchecklist';
-import { GGEM_LOCATIONS } from '@/lib/locations';
+import { preAggregationSetupConfig } from '@/features/aggregation/config/PreAggregationSetupChecklist';
+import { qualityControlGradingConfig } from '@/features/aggregation/config/QualityControlGradingChecklist';
+import { weighingRecordingConfig } from '@/features/aggregation/config/WeighingRecordingChecklist';
+import { warehouseStockReceivingConfig } from '@/features/aggregation/config/WarehouseStockReceivingChecklist';
+import { endOfDayReconciliationConfig } from '@/features/aggregation/config/EndofDayReconciliationChecklist';
+import {
+  createAggregationSessionFromPreAggregation,
+  fetchActiveAggregationSessionAtHub,
+  isValidAggregationHubSlug,
+} from '@/features/aggregation/lib/aggregationSessions';
+import {
+  collectPreAggregationTeamUids,
+  enrichPreAggregationSubmissionWithNames,
+} from '@/features/aggregation/lib/preAggregationTeam';
 
 // Config Lookup Strategy
 const CHECKLIST_CONFIGS = {
@@ -37,6 +51,11 @@ const CHECKLIST_CONFIGS = {
   'sales-marketing': salesMarketingChecklistConfig,
   'field-monitoring-qa': fieldMonitoringQAChecklistConfig,
   'data-callcentre-oversight': dataCallCentreOversightChecklistConfig,
+  'pre-aggregation-setup': preAggregationSetupConfig,
+  'aggregation-quality-control': qualityControlGradingConfig,
+  'aggregation-weighing-recording': weighingRecordingConfig,
+  'aggregation-warehouse-receiving': warehouseStockReceivingConfig,
+  'aggregation-end-of-day': endOfDayReconciliationConfig,
 };
 
 export default function TaskDetail() {
@@ -91,27 +110,86 @@ export default function TaskDetail() {
 
   const handleChecklistComplete = async (submissionData) => {
     try {
-      // Add status field to submission
+      if (submissionData.checklistType === 'pre-aggregation-setup') {
+        const hub = submissionData.hub;
+        const sessionId = submissionData['session-id'];
+        if (!isValidAggregationHubSlug(hub)) {
+          setError('Invalid hub selection.');
+          return;
+        }
+        if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+          setError('Session ID is missing. Reload the task and try again.');
+          return;
+        }
+        const clash = await fetchActiveAggregationSessionAtHub(hub);
+        if (clash) {
+          setError(
+            `An active aggregation session already exists at this hub (session ${clash.sessionId}).`
+          );
+          return;
+        }
+
+        const teamUidFields = [
+          'hub-coordinator-uid',
+          'security-lead-uid',
+          'data-team-representative-uid',
+          'warehouse-supervisor-uid',
+        ];
+        for (const key of teamUidFields) {
+          if (!submissionData[key] || typeof submissionData[key] !== 'string') {
+            setError('Assign all hub staff from the Firestore dropdowns before submitting.');
+            return;
+          }
+        }
+      }
+
+      let dataToSubmit = submissionData;
+      if (submissionData.checklistType === 'pre-aggregation-setup') {
+        dataToSubmit = await enrichPreAggregationSubmissionWithNames(db, submissionData);
+      }
+
       const submissionWithStatus = {
-        ...submissionData,
+        ...dataToSubmit,
         taskId: taskId,
         status: 'pending',
         supervisorId: currentUser.uid,
         submittedAt: new Date()
       };
 
-      // Save submission to Firestore
       const submissionRef = await addDoc(collection(db, 'submissions'), submissionWithStatus);
 
-      // Update task status to "pending" (WAITING FOR APPROVAL)
+      if (submissionWithStatus.checklistType === 'pre-aggregation-setup') {
+        try {
+          await createAggregationSessionFromPreAggregation({
+            sessionId: submissionWithStatus['session-id'],
+            hub: submissionWithStatus.hub,
+            openedByUid: currentUser.uid,
+            assignedTeam: collectPreAggregationTeamUids(submissionWithStatus),
+            preAggregationSubmissionId: submissionRef.id,
+            preAggregationTaskId: taskId,
+          });
+        } catch (sessionErr) {
+          console.error('Aggregation session create failed:', sessionErr);
+          await deleteDoc(doc(db, 'submissions', submissionRef.id));
+          setError(
+            sessionErr?.message ||
+              'Could not create aggregation session. Submission was not saved. Try again.'
+          );
+          return;
+        }
+      }
+
       await updateDoc(doc(db, 'tasks', taskId), {
-        status: 'pending', // Changed from 'completed' to 'pending'
+        status: 'pending',
         endTime: new Date(),
         submissionId: submissionRef.id
       });
 
-      alert(`Task submitted successfully!\nStatus: Waiting for Manager Approval`);
-      navigate('/dashboard/supervisor');
+      toast.success('Checklist Submitted! ✓', {
+        description: 'Waiting for Manager Approval.',
+        duration: 3000,
+      });
+      setTimeout(() => navigate('/dashboard/supervisor'), 1500);
     } catch (err) {
       console.error('Error submitting checklist:', err);
       setError('Failed to submit checklist');

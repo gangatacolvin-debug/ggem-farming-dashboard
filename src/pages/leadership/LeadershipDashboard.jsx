@@ -1,12 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Truck, Factory, Activity, AlertTriangle, Briefcase, ChevronRight } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Users, Activity, AlertTriangle, Briefcase } from 'lucide-react';
+import { useResolveUserNames } from './hooks/useResolveUserNames';
 import { DEPARTMENTS_CONFIG, getDepartmentForChecklist } from '@/config/departments';
 import DepartmentCharts from './components/DepartmentCharts';
+import LiveOperationsFeed from './components/LiveOperationsFeed';
+import ActiveAggregationSessions from './components/ActiveAggregationSessions';
+import LeadershipDepartmentPanel from './components/LeadershipDepartmentPanel';
 
-// Reusable KPI Card Component
 const KPICard = ({ title, value, subtext, icon: Icon, colorClass = 'text-blue-600', bgColorClass = 'bg-blue-100' }) => (
     <Card>
         <CardContent className="p-6">
@@ -24,63 +29,190 @@ const KPICard = ({ title, value, subtext, icon: Icon, colorClass = 'text-blue-60
     </Card>
 );
 
+function countLiveTasksByDepartment(liveTasks) {
+    const counts = {};
+    DEPARTMENTS_CONFIG.forEach((d) => {
+        counts[d.id] = 0;
+    });
+    liveTasks.forEach((task) => {
+        const dept = getDepartmentForChecklist(task.checklistType);
+        if (dept && counts[dept.id] != null) {
+            counts[dept.id] += 1;
+        }
+    });
+    return counts;
+}
+
 export default function LeadershipDashboard() {
-    const [activeTab, setActiveTab] = useState('overview'); // 'overview' or department id
+    const [activeTab, setActiveTab] = useState('overview');
     const [liveTasks, setLiveTasks] = useState([]);
     const [completedTasks, setCompletedTasks] = useState([]);
+    const [aggregationSessions, setAggregationSessions] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [dataErrors, setDataErrors] = useState({});
 
     useEffect(() => {
-        // Fetch ALL live tasks for the feed
         const qLive = query(
             collection(db, 'tasks'),
             where('status', 'in', ['pending', 'in-progress'])
         );
 
-        const unsubLive = onSnapshot(qLive, (snapshot) => {
-            const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setLiveTasks(tasks);
-        });
-
-        // Fetch completed submissions for KPI Aggregation (in a real app, constrain to last 30 days)
-        const qCompleted = query(
-            collection(db, 'submissions')
-            // Add date constraints here later
+        const unsubLive = onSnapshot(
+            qLive,
+            (snapshot) => {
+                const tasks = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+                setLiveTasks(tasks);
+                setDataErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.liveTasks;
+                    return next;
+                });
+            },
+            (err) => {
+                console.error('Leadership live tasks:', err);
+                setDataErrors((prev) => ({
+                    ...prev,
+                    liveTasks: 'Live tasks feed failed to load (check rules or network).',
+                }));
+            }
         );
 
-        const unsubCompleted = onSnapshot(qCompleted, (snapshot) => {
-            const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setCompletedTasks(tasks);
-            setLoading(false);
-        });
+        const qCompleted = query(collection(db, 'submissions'));
+
+        const unsubCompleted = onSnapshot(
+            qCompleted,
+            (snapshot) => {
+                const tasks = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+                setCompletedTasks(tasks);
+                setLoading(false);
+                setDataErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.submissions;
+                    return next;
+                });
+            },
+            (err) => {
+                console.error('Leadership submissions:', err);
+                setLoading(false);
+                setDataErrors((prev) => ({
+                    ...prev,
+                    submissions: 'Submissions stream failed (KPIs and charts may be empty).',
+                }));
+            }
+        );
+
+        const qAgg = query(
+            collection(db, 'aggregationSessions'),
+            where('department', '==', 'aggregation')
+        );
+
+        const unsubAgg = onSnapshot(
+            qAgg,
+            (snapshot) => {
+                const list = snapshot.docs
+                    .map((doc) => ({ id: doc.id, ...doc.data() }))
+                    .sort((a, b) => {
+                        const ta = a.createdAt?.toMillis?.() || 0;
+                        const tb = b.createdAt?.toMillis?.() || 0;
+                        return tb - ta;
+                    });
+                setAggregationSessions(list);
+                setDataErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.aggregationSessions;
+                    return next;
+                });
+            },
+            (err) => {
+                console.error('Leadership aggregation sessions:', err);
+                setDataErrors((prev) => ({
+                    ...prev,
+                    aggregationSessions: 'Aggregation sessions could not be loaded.',
+                }));
+            }
+        );
 
         return () => {
             unsubLive();
             unsubCompleted();
+            unsubAgg();
         };
     }, []);
 
+    const liveByDept = useMemo(() => countLiveTasksByDepartment(liveTasks), [liveTasks]);
+
+    const liveAssigneeUids = useMemo(
+        () => liveTasks.map((t) => t.assignedTo).filter((id) => typeof id === 'string' && id.length > 0),
+        [liveTasks]
+    );
+    const assigneeNames = useResolveUserNames(liveAssigneeUids);
+
+    const activeAggSessions = useMemo(
+        () => aggregationSessions.filter((s) => s.status === 'active'),
+        [aggregationSessions]
+    );
+
     if (loading) {
-        return <div className="p-8 text-center text-gray-500 flex justify-center items-center h-full">Loading Leadership Insights...</div>;
+        return (
+            <div className="p-8 text-center text-gray-500 flex justify-center items-center h-full">
+                Loading Leadership Insights...
+            </div>
+        );
     }
 
-    // Process Data based on Tab
-    const filteredLiveTasks = activeTab === 'overview'
-        ? liveTasks
-        : liveTasks.filter(task => {
-            const dept = getDepartmentForChecklist(task.checklistType);
-            return dept && dept.id === activeTab;
-        });
+    const filteredLiveTasks =
+        activeTab === 'overview'
+            ? liveTasks
+            : liveTasks.filter((task) => {
+                  const dept = getDepartmentForChecklist(task.checklistType);
+                  return dept && dept.id === activeTab;
+              });
 
-    const filteredCompletedTasks = activeTab === 'overview'
-        ? completedTasks
-        : completedTasks.filter(task => {
-            const dept = getDepartmentForChecklist(task.checklistType);
-            return dept && dept.id === activeTab;
-        });
+    const filteredCompletedTasks =
+        activeTab === 'overview'
+            ? completedTasks
+            : completedTasks.filter((task) => {
+                  const dept = getDepartmentForChecklist(task.checklistType);
+                  return dept && dept.id === activeTab;
+              });
+
+    const overviewLivePulse = liveTasks.length + activeAggSessions.length;
+
+    const workstreamSubtext =
+        activeTab === 'aggregation' && activeAggSessions.length > 0
+            ? `${filteredLiveTasks.length} tasks · ${activeAggSessions.length} live hub session(s)`
+            : 'Tasks currently in progress';
+
+    const deptConfig = DEPARTMENTS_CONFIG.find((d) => d.id === activeTab);
+
+    const overviewMainColumn = (
+        <div className="space-y-6">
+            <ActiveAggregationSessions sessions={aggregationSessions} variant="inline" />
+            <LiveOperationsFeed
+                tasks={filteredLiveTasks}
+                title="Live Operations Feed"
+                showDepartmentBadge
+                assigneeNames={assigneeNames}
+            />
+        </div>
+    );
+
+    const errorList = Object.values(dataErrors).filter(Boolean);
 
     return (
         <div className="space-y-6">
+            {errorList.length > 0 && (
+                <Alert variant="destructive">
+                    <AlertTitle>Some data could not load</AlertTitle>
+                    <AlertDescription>
+                        <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                            {errorList.map((msg, i) => (
+                                <li key={i}>{msg}</li>
+                            ))}
+                        </ul>
+                    </AlertDescription>
+                </Alert>
+            )}
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Leadership Overview</h1>
@@ -88,37 +220,68 @@ export default function LeadershipDashboard() {
                 </div>
             </div>
 
-            {/* Dynamic Department Tabs */}
             <div className="flex space-x-2 overflow-x-auto pb-2 border-b">
                 <button
+                    type="button"
                     onClick={() => setActiveTab('overview')}
-                    className={`px-4 py-2 font-medium text-sm rounded-t-lg transition-colors whitespace-nowrap ${activeTab === 'overview'
-                        ? 'bg-primary text-white'
-                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-                        }`}
-                >
-                    Enterprise Overview
-                </button>
-                {DEPARTMENTS_CONFIG.map(dept => (
-                    <button
-                        key={dept.id}
-                        onClick={() => setActiveTab(dept.id)}
-                        className={`px-4 py-2 font-medium text-sm rounded-t-lg flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === dept.id
+                    className={`px-4 py-2 font-medium text-sm rounded-t-lg transition-colors whitespace-nowrap inline-flex items-center gap-2 ${
+                        activeTab === 'overview'
                             ? 'bg-primary text-white'
                             : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                >
+                    Enterprise Overview
+                    {overviewLivePulse > 0 && (
+                        <Badge
+                            variant="secondary"
+                            className={
+                                activeTab === 'overview'
+                                    ? 'bg-white/20 text-white border-0'
+                                    : 'bg-emerald-100 text-emerald-800'
+                            }
+                        >
+                            {overviewLivePulse}
+                        </Badge>
+                    )}
+                </button>
+                {DEPARTMENTS_CONFIG.map((dept) => {
+                    const taskCount = liveByDept[dept.id] || 0;
+                    const sessionExtra = dept.id === 'aggregation' ? activeAggSessions.length : 0;
+                    const badgeCount = taskCount + sessionExtra;
+                    return (
+                        <button
+                            type="button"
+                            key={dept.id}
+                            onClick={() => setActiveTab(dept.id)}
+                            className={`px-4 py-2 font-medium text-sm rounded-t-lg flex items-center gap-2 transition-colors whitespace-nowrap ${
+                                activeTab === dept.id
+                                    ? 'bg-primary text-white'
+                                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
                             }`}
-                    >
-                        {dept.name}
-                    </button>
-                ))}
+                        >
+                            {dept.name}
+                            {badgeCount > 0 && (
+                                <Badge
+                                    variant="secondary"
+                                    className={
+                                        activeTab === dept.id
+                                            ? 'bg-white/20 text-white border-0'
+                                            : 'bg-emerald-100 text-emerald-800'
+                                    }
+                                >
+                                    {badgeCount}
+                                </Badge>
+                            )}
+                        </button>
+                    );
+                })}
             </div>
 
-            {/* High Level KPI Pipeline */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <KPICard
                     title="Active Workstreams"
                     value={filteredLiveTasks.length}
-                    subtext="Tasks currently in progress"
+                    subtext={workstreamSubtext}
                     icon={Activity}
                 />
                 <KPICard
@@ -126,85 +289,49 @@ export default function LeadershipDashboard() {
                     value={filteredCompletedTasks.length}
                     subtext="Completed workflows"
                     icon={Briefcase}
-                    colorClass="text-green-600" bgColorClass="bg-green-100"
+                    colorClass="text-green-600"
+                    bgColorClass="bg-green-100"
                 />
                 <KPICard
                     title="Teams Active"
-                    value={new Set(filteredLiveTasks.map(t => t.assignedTo)).size}
-                    subtext="Unique operators today"
+                    value={new Set(filteredLiveTasks.map((t) => t.assignedTo)).size}
+                    subtext="Unique operators in view"
                     icon={Users}
-                    colorClass="text-purple-600" bgColorClass="bg-purple-100"
+                    colorClass="text-purple-600"
+                    bgColorClass="bg-purple-100"
                 />
                 <KPICard
                     title="Active Alerts"
-                    value={filteredLiveTasks.filter(t => t.locationCompliant === false).length}
+                    value={filteredLiveTasks.filter((t) => t.locationCompliant === false).length}
                     subtext="Currently off-site or flagged"
                     icon={AlertTriangle}
-                    colorClass="text-red-600" bgColorClass="bg-red-100"
+                    colorClass="text-red-600"
+                    bgColorClass="bg-red-100"
                 />
             </div>
 
-            {/* Content Based on Tab */}
             {activeTab === 'overview' ? (
-                // 3-Column Layout for Enterprise Overview (Live Feed on Left, KPI/Alerts on Right)
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Left Side: Dynamic Activity Feed */}
-                    <Card className="lg:col-span-2">
-                        <CardHeader>
-                            <CardTitle>Live Operations Feed</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {filteredLiveTasks.length === 0 ? (
-                                <p className="text-gray-500 text-center py-6">No active operations in this view.</p>
-                            ) : (
-                                <div className="space-y-4">
-                                    {filteredLiveTasks.map(task => {
-                                        const dept = getDepartmentForChecklist(task.checklistType);
-                                        return (
-                                            <div key={task.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-semibold text-gray-900">{task.checklistName || task.checklistType}</span>
-                                                        {dept && (
-                                                            <span className={`text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200`}>
-                                                                {dept.name}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-sm text-gray-500 flex items-center gap-2 mt-1">
-                                                        <span>By: {task.assignedTo || 'Unassigned'}</span>
-                                                        <span>•</span>
-                                                        <span className="capitalize">{task.status}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right flex flex-col items-end">
-                                                    {task.checklistProgress?.completedSections && (
-                                                        <div className="text-sm font-medium text-blue-600">
-                                                            {task.checklistProgress.completedSections.length} Steps Done
-                                                        </div>
-                                                    )}
-                                                    <span className="text-xs text-gray-400">
-                                                        {task.lastUpdated?.toDate ? task.lastUpdated.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Right Side: Specific Metrics */}
+                    <div className="lg:col-span-2 space-y-6">{overviewMainColumn}</div>
                     <div className="space-y-6">
-                        <DepartmentCharts activeTab={activeTab} tasks={filteredCompletedTasks} liveTasks={filteredLiveTasks} />
+                        <DepartmentCharts
+                            activeTab={activeTab}
+                            tasks={filteredCompletedTasks}
+                            liveTasks={filteredLiveTasks}
+                        />
                     </div>
                 </div>
             ) : (
-                // Full Width Layout for detailed department dashboards
-                <div className="w-full">
-                    <DepartmentCharts activeTab={activeTab} tasks={filteredCompletedTasks} liveTasks={filteredLiveTasks} />
-                </div>
+                deptConfig && (
+                    <LeadershipDepartmentPanel
+                        key={deptConfig.id}
+                        department={deptConfig}
+                        filteredLiveTasks={filteredLiveTasks}
+                        filteredCompletedTasks={filteredCompletedTasks}
+                        aggregationSessions={aggregationSessions}
+                        assigneeNames={assigneeNames}
+                    />
+                )
             )}
         </div>
     );

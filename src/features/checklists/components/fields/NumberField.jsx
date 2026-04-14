@@ -30,11 +30,12 @@ export default function NumberField({ field }) {
                 type="number"
                 step="any"
                 placeholder={field.placeholder}
+                readOnly={field.readOnly}
                 {...register(field.id, {
                     valueAsNumber: true,
-                    required: field.required
+                    required: field.required && !field.readOnly
                 })}
-                className={warning ? "border-orange-300 focus-visible:ring-orange-300 bg-orange-50" : ""}
+                className={`${warning ? "border-orange-300 focus-visible:ring-orange-300 bg-orange-50" : ""} ${field.readOnly ? "bg-gray-100 cursor-not-allowed opacity-80" : ""}`}
             />
             {warning && (
                 <div className="flex items-center gap-1 text-xs text-orange-600 font-medium animate-in fade-in slide-in-from-top-1">

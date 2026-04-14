@@ -40,19 +40,7 @@ export default function LogTableField({ field }) {
 
   // Handle computed columns logic
   const handleFieldChange = (index, colKey, val) => {
-    // If this column drives computation
-    const row = fields[index];
-    // We can't easily access the latest value of *other* fields here inside standard loop easily without watch.
-    // But we can check if *any* column has a 'computed' property dependent on this one.
-
-    // Better approach: Iterate all columns, if any has `computed` function, run it.
-    // However, functions can't be passed easily in JSON config.
-    // So we will support a specific "computedFrom" logic string or hardcode for now?
-    // User asked for specific "500kg -> 10 bags".
-    // Let's implement a generic "computed" property in column config:
-    // computed: { operation: 'divide', source: 'actualOutput', factor: 50 }
-
-    // Let's implement this logic:
+    // Legacy single-source computed logic (backward compatibility)
     field.columns.forEach(col => {
       if (col.computed) {
         const { operation, source, factor } = col.computed;
@@ -66,6 +54,35 @@ export default function LogTableField({ field }) {
           setValue(`${field.id}.${index}.${col.key}`, result);
         }
       }
+
+      // New multi-source calculation logic (e.g. weight * price = gross)
+      if (col.calculation && col.calculation.sources.includes(colKey)) {
+        const { operation, sources } = col.calculation;
+        if (operation === 'multiply') {
+          // We need the latest values for all sources in this row
+          const rowValues = watch(`${field.id}.${index}`);
+          
+          let result = 1;
+          let allPresent = true;
+
+          sources.forEach(src => {
+            // Use the newly changed value if it's the current src, otherwise use row value
+            const currentVal = src === colKey ? val : rowValues[src];
+            const num = parseFloat(currentVal);
+            if (isNaN(num)) {
+              allPresent = false;
+            } else {
+              result *= num;
+            }
+          });
+
+          if (allPresent) {
+            setValue(`${field.id}.${index}.${col.key}`, Math.round(result));
+          } else {
+            setValue(`${field.id}.${index}.${col.key}`, 0);
+          }
+        }
+      }
     });
   };
 
@@ -77,12 +94,12 @@ export default function LogTableField({ field }) {
         <label className="text-sm font-medium">{field.label}</label>
       </div>
 
-      <div className="border rounded-md overflow-hidden bg-white shadow-sm">
+      <div className="border rounded-md overflow-hidden bg-white shadow-sm overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50">
               {columns.map((col) => (
-                <TableHead key={col.key} className="text-xs uppercase text-gray-500 font-semibold">{col.label}</TableHead>
+                <TableHead key={col.key} className="text-xs uppercase text-gray-500 font-semibold whitespace-nowrap">{col.label}</TableHead>
               ))}
               <TableHead className="w-[100px]">Log Time</TableHead>
               {!field.prefillRows && <TableHead className="w-[50px]"></TableHead>}
@@ -90,26 +107,38 @@ export default function LogTableField({ field }) {
           </TableHeader>
           <TableBody>
             {fields.map((item, index) => {
-              // Check if entry is late (if scheduledTime exists)
-              // This logic assumes scheduledTime is like "08:00"
               const timestamp = watch(`${field.id}.${index}._timestamp`);
 
               return (
                 <TableRow key={item.id}>
                   {columns.map((col) => (
-                    <TableCell key={`${item.id}-${col.key}`}>
+                    <TableCell key={`${item.id}-${col.key}`} className="p-2 min-w-[120px]">
                       {col.readOnly ? (
                         <Input
                           {...register(`${field.id}.${index}.${col.key}`)}
                           readOnly
-                          className="h-8 text-xs bg-gray-50"
+                          className="h-9 text-xs bg-gray-50 font-medium"
                         />
+                      ) : col.type === 'select' ? (
+                        <select
+                          {...register(`${field.id}.${index}.${col.key}`)}
+                          className="w-full h-9 text-xs border border-gray-200 rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          onChange={(e) => {
+                             handleTimestamp(index);
+                             handleFieldChange(index, col.key, e.target.value);
+                          }}
+                        >
+                          <option value="">-- Select --</option>
+                          {col.options?.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                       ) : (
                         <Input
                           {...register(`${field.id}.${index}.${col.key}`)}
                           placeholder={col.placeholder}
                           type={col.type || 'text'}
-                          className="h-8 text-xs"
+                          className="h-9 text-xs"
                           onBlur={(e) => {
                             handleTimestamp(index);
                             handleFieldChange(index, col.key, e.target.value);

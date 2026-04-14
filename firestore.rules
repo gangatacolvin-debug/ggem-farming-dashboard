@@ -7,10 +7,55 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Allow read/write for all authenticated users
-    // WARNING: For production, you should restrict this further (e.g. based on role)
-    match /{document=**} {
+    function validAggregationHub(h) {
+      return h in ['main-site','dwangwa-hub', 'linga-hub', 'suluwi-hub', 'salima-hub'];
+    }
+
+    function validAggregationSessionStatus(s) {
+      return s in ['active', 'closed'];
+    }
+
+    /**
+     * aggregationSessions — enforced document shape (see aggregationSessions.js).
+     * Required on create: sessionId, hub, status, assignedTeam, openedByUid, department.
+     * Timestamps (createdAt, updatedAt) are set via serverTimestamp() on the client.
+     */
+    match /aggregationSessions/{docId} {
+      allow read: if isAuthenticated();
+
+      // createdAt / updatedAt use serverTimestamp(); omit from hasAll (sentinel not always visible to rules)
+      allow create: if isAuthenticated()
+        && request.resource.data.keys().hasAll([
+          'sessionId', 'hub', 'status', 'assignedTeam', 'openedByUid', 'department'
+        ])
+        && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.size() > 0
+        && validAggregationHub(request.resource.data.hub)
+        && validAggregationSessionStatus(request.resource.data.status)
+        && request.resource.data.assignedTeam is list
+        && request.resource.data.assignedTeam.size() > 0
+        && request.resource.data.openedByUid is string
+        && request.resource.data.department == 'aggregation';
+
+      allow update: if isAuthenticated()
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.hub == resource.data.hub
+        && request.resource.data.openedByUid == resource.data.openedByUid
+        && validAggregationHub(request.resource.data.hub)
+        && validAggregationSessionStatus(request.resource.data.status)
+        && request.resource.data.assignedTeam is list
+        && request.resource.data.department == 'aggregation';
+    }
+
+    // Weighing edit audit trail (Step 6 can add field-level validation)
+    match /aggregationSessions/{sessionId}/auditLog/{logId} {
       allow read, write: if isAuthenticated();
+    }
+
+    // All other collections (exclude top-level aggregationSessions — validated in match above).
+    // Subcollections under other parents still match via {document=**} on the remainder.
+    match /{collection}/{document=**} {
+      allow read, write: if isAuthenticated() && collection != 'aggregationSessions';
     }
   }
 }

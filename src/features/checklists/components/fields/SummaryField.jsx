@@ -45,6 +45,25 @@ export default function SummaryField({ field, checklistType }) {
     const issuesFlaggedCount = useWatch({ control, name: 'issues-flagged-count' });
     const issuesResolvedCount = useWatch({ control, name: 'issues-resolved-count' });
 
+    // Aggregation Specific Watches
+    const aggExpectedFarmers = useWatch({ control, name: 'expected-farmers' });
+    const aggTotalStaffCount = useWatch({ control, name: 'total-staff-count' });
+    const aggMoistureLogs = useWatch({ control, name: 'moisture-grading-logs' }) || [];
+    const aggBatchesRejected = useWatch({ control, name: 'batches-rejected-count' });
+    const aggBatchesDowngraded = useWatch({ control, name: 'batches-downgraded-count' });
+    const aggTotalFarmersWeighed = useWatch({ control, name: 'total-farmers-weighed' });
+    const aggTotalWeightKg = useWatch({ control, name: 'total-weight-kg' });
+    const aggTotalGrossAmount = useWatch({ control, name: 'total-gross-amount' });
+    const aggReversalsDone = useWatch({ control, name: 'reversals-done' });
+    const aggTotalBagsReceived = useWatch({ control, name: 'total-bags-received' });
+    const aggTotalWeightReceivedKg = useWatch({ control, name: 'total-weight-received-kg' });
+    const aggTotalBagsRejected = useWatch({ control, name: 'total-bags-rejected' });
+    const aggDamagedBagsCount = useWatch({ control, name: 'damaged-bags-count' });
+    const aggFarmersAttendedToday = useWatch({ control, name: 'farmers-attended-today' });
+    const aggTotalBagsToday = useWatch({ control, name: 'total-bags-today' });
+    const aggTotalWeightTodayKg = useWatch({ control, name: 'total-weight-today-kg' });
+    const aggIsFinalDay = useWatch({ control, name: 'is-final-day' });
+
     // Helper to safely parse numbers
     const safeParse = (val) => {
         const num = parseFloat(val);
@@ -264,6 +283,186 @@ export default function SummaryField({ field, checklistType }) {
                 </div>
             </div>
         )
+    }
+
+    if (checklistType === 'pre-aggregation-setup') {
+        const expectedFarmers = safeParse(aggExpectedFarmers);
+        const totalStaff = safeParse(aggTotalStaffCount);
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">Pre-Aggregation Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Expected Farmers</Label>
+                            <p className="text-2xl font-bold text-primary">{expectedFarmers}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Total Staff</Label>
+                            <p className="text-2xl font-bold text-blue-600">{totalStaff}</p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
+    if (checklistType === 'aggregation-quality-control') {
+        const totalTests = aggMoistureLogs.length;
+        const rejected = safeParse(aggBatchesRejected);
+        const downgraded = safeParse(aggBatchesDowngraded);
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">Quality Control Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Total Tests</Label>
+                            <p className="text-2xl font-bold text-primary">{totalTests}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Batches Rejected</Label>
+                            <p className="text-2xl font-bold text-red-600">{rejected}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Batches Downgraded</Label>
+                            <p className="text-2xl font-bold text-orange-600">{downgraded}</p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
+    if (checklistType === 'aggregation-weighing-recording') {
+        const logs = useWatch({ control, name: 'farmer-weighing-logs' }) || [];
+        
+        const farmersWeighed = logs.length;
+        const totalWeight = logs.reduce((sum, row) => sum + safeParse(row.weightKg), 0);
+        const totalGross = logs.reduce((sum, row) => sum + safeParse(row.grossAmount), 0);
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">Weighing & Recording Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Farmers Weighed</Label>
+                            <p className="text-2xl font-bold text-primary">{farmersWeighed}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Total Weight</Label>
+                            <p className="text-2xl font-bold text-green-600">{totalWeight} kg</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Gross Amount</Label>
+                            <p className="text-2xl font-bold text-blue-600">MWK {totalGross.toLocaleString()}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Reversals Done</Label>
+                            <p className={`text-xl font-bold ${aggReversalsDone ? 'text-red-600' : 'text-slate-600'}`}>
+                                {aggReversalsDone ? 'Yes' : 'No'}
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
+    if (checklistType === 'aggregation-warehouse-receiving') {
+        const bagsReceived = safeParse(aggTotalBagsReceived);
+        const weightReceived = safeParse(aggTotalWeightReceivedKg);
+        const bagsRejected = safeParse(aggTotalBagsRejected);
+        const damagedBags = safeParse(aggDamagedBagsCount);
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">Warehouse Receiving Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Bags Received</Label>
+                            <p className="text-2xl font-bold text-primary">{bagsReceived}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Weight Received</Label>
+                            <p className="text-2xl font-bold text-green-600">{weightReceived} kg</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Bags Rejected</Label>
+                            <p className="text-2xl font-bold text-orange-600">{bagsRejected}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Damaged Bags</Label>
+                            <p className={`text-xl font-bold ${damagedBags > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {damagedBags}
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
+    if (checklistType === 'aggregation-end-of-day') {
+        const farmersAttended = safeParse(aggFarmersAttendedToday);
+        const totalBags = safeParse(aggTotalBagsToday);
+        const totalWeight = safeParse(aggTotalWeightTodayKg);
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">End of Day Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Farmers Attended</Label>
+                            <p className="text-2xl font-bold text-primary">{farmersAttended}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Bags Received</Label>
+                            <p className="text-2xl font-bold text-primary">{totalBags}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Weight Received</Label>
+                            <p className="text-2xl font-bold text-green-600">{totalWeight} kg</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Final Day Status</Label>
+                            <p className="text-xl font-bold text-blue-600">
+                                {aggIsFinalDay === 'yes' ? 'Yes - Close' : 'No - Continues'}
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        );
     }
 
     // DEFAULT (Briquette Production)

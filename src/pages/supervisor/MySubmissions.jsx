@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -82,12 +83,11 @@ export default function MySubmissions() {
 
 const handleResubmit = async () => {
   if (!selectedSubmission || !resubmitNote.trim()) {
-    alert('Please add a note explaining the resubmission');
+    toast.warning('Note Required', { description: 'Please add a note explaining the resubmission.' });
     return;
   }
 
   try {
-    // Update submission status
     await updateDoc(doc(db, 'submissions', selectedSubmission.id), {
       status: 'pending',
       resubmittedAt: new Date(),
@@ -99,7 +99,6 @@ const handleResubmit = async () => {
       }
     });
 
-    // Update task status back to pending
     if (selectedSubmission.taskId) {
       await updateDoc(doc(db, 'tasks', selectedSubmission.taskId), {
         status: 'pending',
@@ -107,13 +106,16 @@ const handleResubmit = async () => {
       });
     }
 
-    alert('Batch resubmitted successfully!');
+    toast.success('Resubmitted Successfully ✓', {
+      description: 'Your submission is back in the queue for manager approval.',
+      duration: 4000,
+    });
     setShowResubmitDialog(false);
     setShowDetailDialog(false);
     setResubmitNote('');
   } catch (err) {
     console.error('Error resubmitting:', err);
-    alert('Failed to resubmit batch');
+    toast.error('Resubmission Failed', { description: 'Please try again.' });
   }
 };;
 

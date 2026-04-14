@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { collection, query, where, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -13,9 +14,10 @@ import { DEPARTMENTS_CONFIG } from '@/config/departments';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function SupervisorDashboard() {
-  const { currentUser, userDepartment } = useAuth();
+  const { currentUser, userDepartment, hubAssignments } = useAuth();
   const navigate = useNavigate();
   const [todayTasks, setTodayTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -192,20 +194,60 @@ export default function SupervisorDashboard() {
       navigate(`/dashboard/supervisor/task/${docRef.id}`);
     } catch (error) {
       console.error('Error starting new task:', error);
-      alert('Failed to start new task');
+      toast.error('Failed to Start Task', { description: 'Something went wrong. Please try again.' });
     } finally {
       setCreatingTask(false);
     }
   };
 
-  const currentDepartmentConfig = DEPARTMENTS_CONFIG.find(d => d.id === userDepartment);
-  // Default to empty array if user department has no checklists
-  const availableChecklists = currentDepartmentConfig ? currentDepartmentConfig.checklists : [];
+  // Filter checklists based on departmental rules
+  const deptConfig = DEPARTMENTS_CONFIG.find(d => d.id === userDepartment);
+  let availableChecklists = deptConfig ? [...deptConfig.checklists] : [];
+
+  // Conditional Aggregation Access
+  const hasHubAssignment = hubAssignments && hubAssignments.length > 0;
+  if (hasHubAssignment && userDepartment !== 'aggregation') {
+    const aggConfig = DEPARTMENTS_CONFIG.find(d => d.id === 'aggregation');
+    if (aggConfig) {
+      availableChecklists = [...new Set([...availableChecklists, ...aggConfig.checklists])];
+    }
+  }
+
+  // Helper to format labels accurately
+  const getLabel = (id) => {
+    // 1. Check if the current department has a specific label for it
+    const localLabel = deptConfig?.checklistLabels?.[id];
+    if (localLabel) return localLabel;
+
+    // 2. Check the aggregation config specifically for its labels
+    const aggConfig = DEPARTMENTS_CONFIG.find(d => d.id === 'aggregation');
+    const aggLabel = aggConfig?.checklistLabels?.[id];
+    if (aggLabel) return aggLabel;
+
+    // 3. Fallback to formatting the ID
+    return id.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-gray-500">Loading tasks...</p>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm border mb-6">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-40" />
+            <Skeleton className="h-10 w-40" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24 w-full" />)}
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-full max-w-[600px]" />
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full" />)}
+        </div>
       </div>
     );
   }
@@ -322,8 +364,8 @@ export default function SupervisorDashboard() {
                 </SelectTrigger>
                 <SelectContent>
                   {availableChecklists.map(checklistId => (
-                    <SelectItem key={checklistId} value={checklistId} className="capitalize">
-                      {checklistId.replace(/-/g, ' ')}
+                    <SelectItem key={checklistId} value={checklistId}>
+                      {getLabel(checklistId)}
                     </SelectItem>
                   ))}
                 </SelectContent>
