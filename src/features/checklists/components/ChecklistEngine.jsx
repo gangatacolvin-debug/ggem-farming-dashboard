@@ -46,8 +46,9 @@ import FirestoreSelectField from './fields/Firestoreselectfield';
 import FirestoreMultiselectField from './fields/Firestoremultiselectfield';
 import FirestoreMultiselectWithManualField from './fields/Firestoremultiselectwithmanualfield';
 import FarmerLookupField from './fields/FarmerLookupField';
+import MillingSummaryField from './fields/MillingSummaryField';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { GGEM_LOCATIONS } from '@/lib/locations';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -82,7 +83,7 @@ const MAX_ALLOWED_DISTANCE = 4336539; // meters
 /**
  * Renders the appropriate field component based on type.
  */
-const FieldRenderer = ({ field, checklistType }) => {
+const FieldRenderer = ({ field, checklistType, checklistStartTime }) => {
   switch (field.type) {
     case 'text':
       return <TextField field={field} />;
@@ -97,7 +98,7 @@ const FieldRenderer = ({ field, checklistType }) => {
     case 'log-table':
       return <LogTableField field={field} />;
     case 'summary':
-      return <SummaryField field={field} checklistType={checklistType} />;
+      return <SummaryField field={field} checklistType={checklistType} checklistStartTime={checklistStartTime} />;
     case 'date':
       return <DateField field={field} />;
     case 'time':
@@ -108,6 +109,8 @@ const FieldRenderer = ({ field, checklistType }) => {
       return <FirestoreMultiselectField field={field} />;
     case 'firestore-multiselect-with-manual':
       return <FirestoreMultiselectWithManualField field={field} />;
+    case 'milling-summary':
+      return <MillingSummaryField field={field} />;
     case 'farmer-lookup':
       return <FarmerLookupField field={field} />;
     case 'info':
@@ -144,8 +147,6 @@ export default function ChecklistEngine({
   const [locationStatus, setLocationStatus] = useState('locating');
   const [distance, setDistance] = useState(null);
   const [expectedLocation, setExpectedLocation] = useState(null);
-  const [currentLocation, setCurrentLocation] = useState(null);
-  const [sectionLocationStatus, setSectionLocationStatus] = useState({});
   const [lastSaved, setLastSaved] = useState(null);
 
   // Early Exit State
@@ -157,10 +158,18 @@ export default function ChecklistEngine({
   const [showHandoffDialog, setShowHandoffDialog] = useState(false);
   const [handoffReason, setHandoffReason] = useState('');
   const [handoffLoading, setHandoffLoading] = useState(false);
-  /** Step 4: active session already open at selected hub (pre-aggregation only). */
   const [preAggHubClash, setPreAggHubClash] = useState(null);
 
-  const { currentUser } = useAuth();
+  // Time Tracking State
+  const [sectionTimers, setSectionTimers] = useState({});
+  const [checklistStartTime, setChecklistStartTime] = useState(null);
+  const [activeSectionStartTime, setActiveSectionStartTime] = useState(Date.now());
+  const [displayedSectionTime, setDisplayedSectionTime] = useState(0);
+
+  // Flag Tracking State
+  const [triggeredFlags, setTriggeredFlags] = useState({});
+
+  const { currentUser, userName } = useAuth();
 
   // Ref map to track each section's DOM element for auto-scroll
   const sectionRefs = useRef({});
@@ -180,12 +189,110 @@ export default function ChecklistEngine({
       const farmers = weighingLogs.length;
       const weight = weighingLogs.reduce((sum, row) => sum + (parseFloat(row.weightKg) || 0), 0);
       const gross = weighingLogs.reduce((sum, row) => sum + (parseFloat(row.grossAmount) || 0), 0);
-      
+
       setValue('total-farmers-weighed', farmers, { shouldValidate: true });
       setValue('total-weight-kg', weight, { shouldValidate: true });
       setValue('total-gross-amount', gross, { shouldValidate: true });
     }
   }, [weighingLogs, config.id, setValue]);
+
+  // Universal Section Time Tracking Logic
+  useEffect(() => {
+    setChecklistStartTime(Date.now());
+  }, []);
+
+  useEffect(() => {
+    const now = Date.now();
+    setActiveSectionStartTime(now);
+
+    return () => {
+      const elapsed = Math.floor((Date.now() - now) / 1000);
+      setSectionTimers(prev => {
+        if (!activeSection) return prev;
+        return {
+          ...prev,
+          [activeSection]: (prev[activeSection] || 0) + elapsed
+        };
+      });
+    };
+  }, [activeSection]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - activeSectionStartTime) / 1000);
+      const previousTotal = sectionTimers[activeSection] || 0;
+      setDisplayedSectionTime(previousTotal + elapsed);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeSection, activeSectionStartTime, sectionTimers]);
+
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  // Universal Real-Time Flagging Logic
+  const formValues = watch();
+
+  useEffect(() => {
+    if (!taskData || !currentUser?.uid) return;
+
+    config.sections.forEach(section => {
+      section.fields.forEach(field => {
+        if (field.flag) {
+          const value = formValues[field.id];
+          const flagKey = `${field.id}`;
+
+          if (value === true && !triggeredFlags[flagKey]) {
+            setTriggeredFlags(prev => ({ ...prev, [flagKey]: true }));
+
+            const writeFlag = async () => {
+              try {
+                await addDoc(collection(db, 'flags'), {
+                  taskId: taskId || 'unknown-task',
+                  checklistType: config.id,
+                  department: taskData.department || currentUser?.department,
+                  sessionId: taskData.sessionId || null,
+                  fieldId: field.id,
+                  fieldLabel: field.label,
+                  severity: field.flag.severity || 'warning',
+                  message: field.flag.message || `Flag triggered for ${field.label}`,
+                  supervisorId: currentUser.uid,
+                  supervisorName: taskData.supervisorInfo?.name || userName || currentUser.displayName || 'Supervisor',
+                  triggeredAt: serverTimestamp(),
+                  status: 'open',
+                  acknowledgedAt: null,
+                  acknowledgedBy: null,
+                  actionTakenAt: null,
+                  actionTakenBy: null,
+                  actionType: null,
+                  actionNotes: null,
+                  resolvedAt: null,
+                  resolvedBy: null,
+                  resolutionNotes: null,
+                  escalatedAt: null,
+                  escalatedTo: null,
+                  escalationReason: null,
+                  responseTimeSeconds: null,
+                  resolutionTimeSeconds: null
+                });
+
+                toast.error('Alert Triggered', {
+                  description: 'Department manager has been notified of this critical flag.',
+                  duration: 5000
+                });
+              } catch (err) {
+                console.error('Failed to write flag:', err);
+              }
+            };
+
+            writeFlag();
+          }
+        }
+      });
+    });
+  }, [formValues, config, taskData, currentUser, taskId, triggeredFlags]);
 
   // Auto-populate Fields Logic
   useEffect(() => {
@@ -216,8 +323,8 @@ export default function ChecklistEngine({
                 valueToSet = taskData.shift || 'Day';
                 break;
               case 'supervisorName':
-                // Attempt to use the name passed in supervisorInfo, or just ID if not available
-                valueToSet = taskData.supervisorInfo?.name || taskData.assignedTo || 'Unassigned';
+                // Attempt to use the name passed in supervisorInfo, currentUser's name, or assignedTo
+                valueToSet = taskData.supervisorInfo?.name || userName || currentUser?.displayName || taskData.assignedTo || 'Unassigned';
                 break;
               case 'timestamp':
                 // For timestamps, we might want to set this when the section becomes active or on render
@@ -299,7 +406,7 @@ export default function ChecklistEngine({
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
     const random = crypto.randomUUID().replace(/-/g, '').slice(0, 7).toUpperCase();
     const generated = `AGG-${dateStr}-${random}`;
-    
+
     setValue('session-id', generated, { shouldValidate: true, shouldDirty: true });
   }, [config.id, taskId, setValue, getValues]);
 
@@ -393,7 +500,6 @@ export default function ChecklistEngine({
           const { latitude, longitude, accuracy } = position.coords;
 
           console.log('📍 GPS - Current Position:', latitude, longitude, 'Accuracy:', accuracy);
-          setCurrentLocation({ latitude, longitude, accuracy });
 
           let dist = null;
           let isCompliant = true;
@@ -585,12 +691,32 @@ export default function ChecklistEngine({
     }
 
     if (onSubmit) {
+      const totalTimeSeconds = Math.floor((Date.now() - checklistStartTime) / 1000);
+      const currentElapsed = Math.floor((Date.now() - activeSectionStartTime) / 1000);
+      const finalSectionTimers = {
+        ...sectionTimers
+      };
+
+      if (activeSection) {
+        finalSectionTimers[activeSection] = (finalSectionTimers[activeSection] || 0) + currentElapsed;
+      }
+
+      // Clean up any empty or invalid keys
+      Object.keys(finalSectionTimers).forEach(key => {
+        if (!key || key === 'null' || key === 'undefined') {
+          delete finalSectionTimers[key];
+        }
+      });
+
       onSubmit({
         ...data,
         completedAt: new Date(),
         checklistType: config.id,
         completedSections: completedSections,
-        finalSection: activeSection
+        finalSection: activeSection,
+        sectionTimes: finalSectionTimers,
+        totalTimeSeconds: totalTimeSeconds,
+        checklistStartedAt: new Date(checklistStartTime)
       });
     }
 
@@ -869,7 +995,15 @@ export default function ChecklistEngine({
 
                         {/* Section Info */}
                         <div className="text-left">
-                          <h3 className="font-semibold text-lg">{section.title}</h3>
+                          <h3 className="font-semibold text-lg flex items-center gap-2">
+                            {section.title}
+                            {isActive && (
+                              <span className="text-xs font-normal text-gray-500 flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-full border">
+                                <Clock className="w-3 h-3" />
+                                {formatTime(displayedSectionTime)}
+                              </span>
+                            )}
+                          </h3>
                           {section.description && (
                             <p className="text-sm text-gray-600">{section.description}</p>
                           )}
@@ -933,7 +1067,7 @@ export default function ChecklistEngine({
                           key={field.id}
                           className="p-4 border rounded-lg bg-white hover:shadow-sm transition-shadow"
                         >
-                          <FieldRenderer field={field} checklistType={config.id} />
+                          <FieldRenderer field={field} checklistType={config.id} checklistStartTime={checklistStartTime} />
                         </div>
                       ))}
                     </div>

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Package, ShieldCheck, AlertCircle, Droplets, Wrench } from 'lucide-react';
 import { format } from 'date-fns';
+import { getValue, getSubmissionDateForTrend } from '../../kpiService';
 import {
     LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
     Legend, Cell
@@ -38,23 +39,28 @@ export default function InventoryAuditsTab({ tasks = [], data = {} }) {
     }, [stockByWarehouse]);
 
     const auditLogData = useMemo(() => {
-        return tasks.filter(t => t.checklistType?.includes('warehouse-inventory')).map(t => {
-            const formData = t.formData || {};
-            const sys = Number(formData['system-balance-weight']) || 0;
-            const phys = Number(formData['tonnes-received']) || sys;
-            const variance = sys > 0 ? (((phys - sys) / sys) * 100).toFixed(2) : 0;
-            return {
-                date: t.timestamp?.toDate ? format(t.timestamp.toDate(), 'MMM dd') : 'Recent',
-                hub: formData['warehouse-id'] || 'Unknown',
-                type: formData['audit-type'] || 'Audit',
-                sys,
-                phys,
-                var: variance,
-                dmg: Number(formData['damaged-expired-count']) || 0,
-                moist: 13.5,
-                signoff: t.status === 'approved' ? 'Approved' : 'Pending Review'
-            };
-        });
+        return tasks
+            .filter((t) => {
+                const ct = String(t.checklistType || '').toLowerCase();
+                return ct.includes('warehouse-inventory') || ct.includes('warehouseinventory') || ct.includes('inventory-audit');
+            })
+            .map((t) => {
+                const sys = Number(getValue(t, 'system-balance-weight')) || 0;
+                const phys = Number(getValue(t, 'tonnes-received')) || sys;
+                const variance = sys > 0 ? (((phys - sys) / sys) * 100).toFixed(2) : 0;
+                const d = getSubmissionDateForTrend(t);
+                return {
+                    date: d ? format(d, 'MMM dd') : 'Recent',
+                    hub: getValue(t, 'warehouse-id') || 'Unknown',
+                    type: getValue(t, 'audit-type') || getValue(t, 'auditType') || 'Audit',
+                    sys,
+                    phys,
+                    var: variance,
+                    dmg: Number(getValue(t, 'damaged-expired-count')) || Number(getValue(t, 'damaged-bags-count')) || 0,
+                    moist: 13.5,
+                    signoff: t.status === 'approved' ? 'Approved' : 'Pending Review',
+                };
+            });
     }, [tasks]);
 
     const getMoistureColor = (status) => {

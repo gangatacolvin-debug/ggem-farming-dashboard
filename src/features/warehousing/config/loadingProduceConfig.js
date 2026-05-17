@@ -158,7 +158,7 @@ export const loadingDispatchChecklistConfig = {
                 { id: 'recorded-in-odoo', type: 'checkbox', label: 'Dispatch details entered into Odoo / CRM (bags loaded, tonnes, staff used, issues noted)', required: true },
                 { id: 'incidents-text', type: 'text', label: 'Incidents / Issues Encountered', placeholder: 'Describe any issues...' },
                 { id: 'warehouse-locked', type: 'checkbox', label: 'Warehouse locked and secured', required: true },
-                { id: 'supervisor-signoff', type: 'text', label: 'Supervisor Sign-off', placeholder: 'Name & Signature', required: true },
+                { id: 'supervisor-signoff', type: 'text', label: 'Supervisor Sign-off', autoPopulate: 'supervisorName', placeholder: 'Name & Signature', required: true },
                 { id: 'closure-time', type: 'time', label: 'Warehouse Closure Timestamp', placeholder: 'HH:MM' }
             ]
         },

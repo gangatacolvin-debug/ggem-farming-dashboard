@@ -23,6 +23,7 @@ import {
     Cell
 } from 'recharts';
 import { Download, Calendar, Filter, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
+import { normalizeDepartment } from '@/lib/departmentNormalize';
 
 export default function ManagerReports() {
     const { userDepartment } = useAuth();
@@ -56,10 +57,11 @@ export default function ManagerReports() {
 
     useEffect(() => {
         if (!userDepartment) return;
+        const normalizedDept = normalizeDepartment(userDepartment);
 
         const q = query(
             collection(db, 'tasks'),
-            where('department', '==', userDepartment)
+            where('department', '==', normalizedDept)
         );
 
         const unsubTasks = onSnapshot(q, async (snapshot) => {
@@ -91,7 +93,7 @@ export default function ManagerReports() {
 
         const qScorecards = query(
             collection(db, 'scorecards'),
-            where('managerDepartment', '==', userDepartment)
+            where('managerDepartment', '==', normalizedDept)
         );
 
         const unsubScorecards = onSnapshot(qScorecards, (snapshot) => {
@@ -106,8 +108,11 @@ export default function ManagerReports() {
 
     // --- Calculations ---
 
-    // 1. Completion Status
-    const isTaskCompleted = (t) => ['completed', 'pending', 'approved', 'flagged', 'rejected'].includes(t.status) || !!t.submissionId;
+    // 1. Completion Status - distinguish between legacy 'pending' (assigned) and genuinely submitted tasks
+    const isTaskCompleted = (t) => 
+        ['completed', 'approved', 'flagged', 'rejected'].includes(t.status) || 
+        (t.status === 'pending' && !!t.submissionId) || 
+        !!t.submissionId;
     const isTaskInProgress = (t) => t.status === 'in-progress';
     const isTaskUnstarted = (t) => !isTaskCompleted(t) && !isTaskInProgress(t);
 

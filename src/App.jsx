@@ -21,10 +21,16 @@ import HubManagement from '@/pages/manager/HubManagement';
 import MySubmissions from '@/pages/supervisor/MySubmissions';
 import SupervisorPerformance from '@/pages/supervisor/SupervisorPerformance';
 import LeadershipDashboard from '@/pages/leadership/LeadershipDashboard';
+import LeadershipSectionPlaceholder from '@/pages/leadership/LeadershipSectionPlaceholder';
+import AiAnalyticsComingSoon from '@/pages/shared/AiAnalyticsComingSoon';
 import { usesFieldWorkerDashboard } from '@/config/fieldPortal';
+import AdminDashboard from '@/pages/admin/AdminDashboard';
+import AdminUsers from '@/pages/admin/AdminUsers';
+import AdminMasterData from '@/pages/admin/AdminMasterData';
+import AdminAuditLog from '@/pages/admin/AdminAuditLog';      
 
 // Placeholder dashboard components (we'll create these next)
-const AdminDashboard = () => <div className="p-8"><h2 className="text-2xl font-bold">Admin Dashboard</h2><p className="text-gray-600 mt-2">Welcome to the admin dashboard</p></div>;
+/*const AdminDashboard = () => <div className="p-8"><h2 className="text-2xl font-bold">Admin Dashboard</h2><p className="text-gray-600 mt-2">Welcome to the admin dashboard</p></div>;*/
 
 // Dashboard Router Component
 function DashboardRouter() {
@@ -67,14 +73,12 @@ function App() {
             <Route index element={<DashboardRouter />} />
 
             {/* Admin Routes */}
-            <Route
-              path="admin"
-              element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminDashboard />
-                </ProtectedRoute>
-              }
-            />
+<Route path="admin">
+  <Route index element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+  <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
+  <Route path="master-data" element={<ProtectedRoute allowedRoles={['admin']}><AdminMasterData /></ProtectedRoute>} />
+  <Route path="audit" element={<ProtectedRoute allowedRoles={['admin']}><AdminAuditLog /></ProtectedRoute>} />
+</Route>
 
             {/* Leadership Routes */}
             <Route
@@ -82,6 +86,47 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['leadership']}>
                   <LeadershipDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="leadership/departments"
+              element={
+                <ProtectedRoute allowedRoles={['leadership']}>
+                  <LeadershipSectionPlaceholder
+                    title="All Departments"
+                    description="Cross-department drill-down lives on the main overview for now."
+                  />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="leadership/performance"
+              element={
+                <ProtectedRoute allowedRoles={['leadership']}>
+                  <LeadershipSectionPlaceholder
+                    title="Performance"
+                    description="Scorecards and trends will land here in a follow-up release."
+                  />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="leadership/reports"
+              element={
+                <ProtectedRoute allowedRoles={['leadership']}>
+                  <LeadershipSectionPlaceholder
+                    title="Reports"
+                    description="Exportable leadership reports are planned next."
+                  />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="leadership/ai-insights"
+              element={
+                <ProtectedRoute allowedRoles={['leadership']}>
+                  <AiAnalyticsComingSoon audience="leadership" />
                 </ProtectedRoute>
               }
             />
@@ -174,6 +219,14 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={['manager']}>
                     <HubManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="ai-insights"
+                element={
+                  <ProtectedRoute allowedRoles={['manager']}>
+                    <AiAnalyticsComingSoon audience="manager" />
                   </ProtectedRoute>
                 }
               />

@@ -13,7 +13,8 @@ import {
   CheckSquare,
   FileText,
   Package,
-  MapPin
+  MapPin,
+  Sparkles,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -24,20 +25,19 @@ export default function Sidebar() {
   // Navigation items based on role
   const getNavigationItems = () => {
     switch (userRole) {
-      case 'admin':
-        return [
-          { name: 'Dashboard', href: '/dashboard/admin', icon: LayoutDashboard },
-          { name: 'User Management', href: '/dashboard/admin/users', icon: Users },
-          { name: 'Departments', href: '/dashboard/admin/departments', icon: Building2 },
-          { name: 'Schedule Management', href: '/dashboard/admin/schedules', icon: Calendar },
-          { name: 'Analytics', href: '/dashboard/admin/analytics', icon: BarChart3 },
-          { name: 'Settings', href: '/dashboard/admin/settings', icon: Settings },
-        ];
+case 'admin':
+  return [
+    { name: 'Dashboard', href: '/dashboard/admin', icon: LayoutDashboard },
+    { name: 'User Management', href: '/dashboard/admin/users', icon: Users },
+    { name: 'Audit Log', href: '/dashboard/admin/audit', icon: BarChart3 },
+    { name: 'Master Data', href: '/dashboard/admin/master-data', icon: Building2 },
+  ];
 
       case 'leadership':
         return [
           { name: 'Dashboard', href: '/dashboard/leadership', icon: LayoutDashboard },
           { name: 'All Departments', href: '/dashboard/leadership/departments', icon: Building2 },
+          { name: 'AI Insights', href: '/dashboard/leadership/ai-insights', icon: Sparkles, badge: 'Soon' },
           { name: 'Performance', href: '/dashboard/leadership/performance', icon: BarChart3 },
           { name: 'Reports', href: '/dashboard/leadership/reports', icon: FileText },
         ];
@@ -50,6 +50,7 @@ export default function Sidebar() {
           { name: 'Submissions Review', href: '/dashboard/manager/submissions', icon: FileText },
           { name: 'Schedules', href: '/dashboard/manager/schedules', icon: Calendar },
           { name: 'Team Performance', href: '/dashboard/manager/reports', icon: BarChart3 },
+          { name: 'AI Insights', href: '/dashboard/manager/ai-insights', icon: Sparkles, badge: 'Soon' },
           { name: 'Inventory', href: '/dashboard/manager/inventory', icon: Package },
         ];
 
@@ -107,8 +108,13 @@ export default function Sidebar() {
                   : 'text-white/70 hover:bg-white/10 hover:text-white'
               )}
             >
-              <Icon className="w-5 h-5" />
-              <span>{item.name}</span>
+              <Icon className="w-5 h-5 shrink-0" />
+              <span className="flex-1">{item.name}</span>
+              {item.badge && (
+                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-400/90 text-amber-950 font-semibold">
+                  {item.badge}
+                </span>
+              )}
             </Link>
           );
         })}

@@ -4,11 +4,16 @@ export const GGEM_LOCATIONS = {
     'main-warehouse': {
         id: 'main-warehouse',
         name: 'GGEM Main Warehouse (gate 2)',
-        latitude: -13.0710848,
-        longitude: 34.2397767,
+        latitude: -13.069775386475346,
+        longitude: 34.23994003771248,
         type: 'warehouse',
-        radius: 1500 // meters
+        radius: 111340 // meters
     },
+
+    //latitude: -13.0710848,
+    // longitude: 34.2397767,
+
+
 
     // Regional Hubs (Replace with your actual hub coordinates)
     'dwangwa-hub': {

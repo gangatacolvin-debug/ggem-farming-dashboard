@@ -15,6 +15,7 @@ import {
   Package,
   MapPin,
   LogOut,
+  Sparkles,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -46,8 +47,8 @@ export default function BottomNav() {
       case 'leadership':
         return [
           { name: 'Dashboard', href: '/dashboard/leadership', icon: LayoutDashboard },
-          { name: 'Departments', href: '/dashboard/leadership/departments', icon: Building2 },
-          { name: 'Performance', href: '/dashboard/leadership/performance', icon: BarChart3 },
+          { name: 'AI', href: '/dashboard/leadership/ai-insights', icon: Sparkles },
+          { name: 'Depts', href: '/dashboard/leadership/departments', icon: Building2 },
           { name: 'Reports', href: '/dashboard/leadership/reports', icon: FileText },
         ];
 
@@ -55,7 +56,7 @@ export default function BottomNav() {
         const items = [
           { name: 'Home', href: '/dashboard/manager', icon: LayoutDashboard },
           { name: 'Tasks', href: '/dashboard/manager/tasks', icon: ClipboardList },
-          { name: 'Monitor', href: '/dashboard/manager/monitoring', icon: CheckSquare },
+          { name: 'AI', href: '/dashboard/manager/ai-insights', icon: Sparkles },
           { name: 'Review', href: '/dashboard/manager/submissions', icon: FileText },
           { name: 'Reports', href: '/dashboard/manager/reports', icon: BarChart3 },
         ];

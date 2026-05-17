@@ -13,17 +13,23 @@ export const DEPARTMENTS_CONFIG = [
             'milling',
             'briquette',
             'hubcollection',
-            'hub-collection-offloading',
             'hubtransfer',
-            'hub-transfer-inspection',
             'warehouseclosing',
-            'warehouse-closing-offloading',
-            'warehouse-closing',
             'warehousemaintenance',
-            'warehouse-maintenance',
             'warehouseinventory',
-            'warehouse-inventory'
-        ]
+            'loading',
+        ],
+        /** Human-readable labels for the task management UI */
+        checklistLabels: {
+            'milling':            'Milling Checklist',
+            'briquette':          'Briquette Checklist',
+            'hubcollection':      'Hub Collection & Offloading Checklist',
+            'hubtransfer':        'Hub Transfer Checklist',
+            'warehouseclosing':   'Warehouse Closing & Offloading Checklist',
+            'warehousemaintenance': 'Warehouse Maintenance Checklist',
+            'warehouseinventory': 'Warehouse Inventory Checklist',
+            'loading':            'Loading & Dispatch Checklist',
+        },
     },
     {
         id: 'data-field',
@@ -76,7 +82,21 @@ export const DEPARTMENTS_CONFIG = [
     // }
 ];
 
+/** Maps checklist config `id` (on submissions) → task `checklistType` keys in DEPARTMENTS_CONFIG */
+export const CHECKLIST_TYPE_ALIASES = {
+    'milling-process': 'milling',
+    'briquette-production': 'briquette',
+    'hub-collection-offloading': 'hubcollection',
+    'loading-produce-dispatch': 'loading',
+    'warehouse-inventory': 'warehouseinventory',
+    'warehouse-maintenance': 'warehousemaintenance',
+};
+
+export const normalizeChecklistType = (checklistId) =>
+    CHECKLIST_TYPE_ALIASES[checklistId] || checklistId;
+
 // Helper function to find a department by checklist ID
 export const getDepartmentForChecklist = (checklistId) => {
-    return DEPARTMENTS_CONFIG.find(dept => dept.checklists.includes(checklistId));
+    const normalized = normalizeChecklistType(checklistId);
+    return DEPARTMENTS_CONFIG.find((dept) => dept.checklists.includes(normalized));
 };

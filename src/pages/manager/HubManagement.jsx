@@ -59,7 +59,7 @@ const AGGREGATION_ROLES = [
   { id: 'hub-coordinator', name: 'Hub Coordinator', icon: User },
   { id: 'security-lead', name: 'Security Lead', icon: ShieldCheck },
   { id: 'second-security', name: 'Second Security', icon: ShieldCheck },
-  { id: 'data-team-lead', name: 'Data Team Lead', icon: Database },
+  { id: 'data-team', name: 'Data Team Lead', icon: Database },
   { id: 'warehouse-supervisor', name: 'Warehouse Supervisor', icon: Truck }
 ];
 
@@ -86,7 +86,7 @@ export default function HubManagement() {
 
     const q = query(
       collection(db, 'users'),
-      where('role', 'in', ['supervisor', 'hub-coordinator', 'security-lead', 'data-team', 'warehouse-supervisor', 'manager'])
+      where('role', 'in', ['supervisor', 'hub-coordinator', 'security-lead', 'second-security', 'data-team', 'warehouse-supervisor', 'manager'])
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -385,8 +385,8 @@ export default function HubManagement() {
                         <div
                           key={role.id}
                           className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-all ${selectedRole === role.id
-                              ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                              : 'hover:bg-gray-50 border-gray-100'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'hover:bg-gray-50 border-gray-100'
                             }`}
                           onClick={() => setSelectedRole(role.id)}
                         >

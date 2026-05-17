@@ -6,16 +6,31 @@
 export const AGGREGATION_FIELD_ROLES = [
   'hub-coordinator',
   'security-lead',
+  'second-security',
   'data-team',
   'warehouse-supervisor',
 ];
 
 export function usesFieldWorkerDashboard(userRole, userDepartment) {
   if (!userRole) return false;
-  if (userRole === 'supervisor') return true;
-  if (userDepartment === 'aggregation' && AGGREGATION_FIELD_ROLES.includes(userRole)) {
+  
+  const role = userRole.toLowerCase().trim();
+  if (role === 'supervisor') return true;
+
+  // Handle department as string or array
+  const departments = Array.isArray(userDepartment) 
+    ? userDepartment.map(d => String(d || '').toLowerCase().trim()) 
+    : [String(userDepartment || '').toLowerCase().trim()];
+
+  const isAggregation = departments.includes('aggregation');
+  const isFieldRole = AGGREGATION_FIELD_ROLES.includes(role);
+
+  console.log('Access Check:', { role, departments, isAggregation, isFieldRole });
+
+  if (isAggregation && isFieldRole) {
     return true;
   }
+  
   return false;
 }
 

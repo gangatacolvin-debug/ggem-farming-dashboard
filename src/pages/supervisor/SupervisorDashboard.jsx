@@ -15,6 +15,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { normalizeDepartment } from '@/lib/departmentNormalize';
 
 export default function SupervisorDashboard() {
   const { currentUser, userDepartment, hubAssignments } = useAuth();
@@ -76,15 +78,21 @@ export default function SupervisorDashboard() {
         return <Badge className="bg-blue-500">In Progress</Badge>;
       case 'completed':
         return <Badge className="bg-green-500">Completed</Badge>;
+      case 'assigned':
+        return <Badge variant="outline" className="border-gray-400 text-gray-600">Assigned</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
   // Helper to categorize tasks
+  // 'assigned' = manager-assigned, not yet started
+  // 'in-progress' = started but not submitted
+  // 'pending' + submissionId = submitted, awaiting approval
+  // 'rejected' / 'approved' / 'completed' = final states
   const categorizedTasks = {
-    todo: todayTasks.filter(t => !t.submissionId && (!t.status || (t.status !== 'in-progress' && t.status !== 'approved' && t.status !== 'rejected'))),
-    inProgress: todayTasks.filter(t => t.status === 'in-progress'),
+    todo: todayTasks.filter(t => !t.submissionId && (!t.status || t.status === 'assigned')),
+    inProgress: todayTasks.filter(t => t.status === 'in-progress' && !t.submissionId),
     submitted: todayTasks.filter(t => t.submissionId && t.status === 'pending'),
     rejected: todayTasks.filter(t => t.status === 'rejected'),
     approved: todayTasks.filter(t => t.status === 'approved' || t.status === 'completed')
@@ -133,8 +141,8 @@ export default function SupervisorDashboard() {
               </div>
 
               <div className="ml-4 flex flex-col gap-2">
-                {/* Actions based on status */}
-                {(!task.status || (task.status !== 'in-progress' && !task.submissionId)) && (
+                {/* Start — only for unstarted assigned tasks */}
+                {(!task.status || task.status === 'assigned') && !task.submissionId && (
                   <Button
                     onClick={() => navigate(`/dashboard/supervisor/task/${task.id}`)}
                     size="sm"
@@ -143,7 +151,8 @@ export default function SupervisorDashboard() {
                   </Button>
                 )}
 
-                {task.status === 'in-progress' && (
+                {/* Continue — only for actively in-progress tasks */}
+                {task.status === 'in-progress' && !task.submissionId && (
                   <Button
                     onClick={() => navigate(`/dashboard/supervisor/task/${task.id}`)}
                     variant="outline"
@@ -153,6 +162,7 @@ export default function SupervisorDashboard() {
                   </Button>
                 )}
 
+                {/* View — submitted, approved, or rejected */}
                 {(task.submissionId || task.status === 'approved' || task.status === 'rejected') && (
                   <Button
                     onClick={() => navigate(`/dashboard/supervisor/task/${task.id}`)}
@@ -172,20 +182,41 @@ export default function SupervisorDashboard() {
 
   const handleStartNewTask = async () => {
     if (!selectedChecklistId || !currentUser) return;
-    
+
+    // 1. If there is already an in-progress task for this checklist, resume it
+    const existingInProgress = todayTasks.find(
+      t => t.checklistType === selectedChecklistId && t.status === 'in-progress' && !t.submissionId
+    );
+    if (existingInProgress) {
+      setIsNewTaskDialogOpen(false);
+      navigate(`/dashboard/supervisor/task/${existingInProgress.id}`);
+      return;
+    }
+
+    // 2. If there is an assigned (not-yet-started) task for this checklist, start that one
+    //    instead of creating a brand-new duplicate task
+    const existingAssigned = todayTasks.find(
+      t => t.checklistType === selectedChecklistId && (t.status === 'assigned' || !t.status) && !t.submissionId
+    );
+    if (existingAssigned) {
+      setIsNewTaskDialogOpen(false);
+      navigate(`/dashboard/supervisor/task/${existingAssigned.id}`);
+      return;
+    }
+
+    // 3. No existing task — create a self-started one
     setCreatingTask(true);
     try {
-      const department = DEPARTMENTS_CONFIG.find(d => d.checklists.includes(selectedChecklistId));
-      
       const newTask = {
-        checklistName: selectedChecklistId.replace(/-/g, ' '),
+        checklistName: getLabel(selectedChecklistId),
         checklistType: selectedChecklistId,
-        department: department ? department.id : userDepartment,
+        department: normalizeDepartment(userDepartment),
         assignedTo: currentUser.uid,
         status: 'in-progress',
+        selfStarted: true,
         scheduledDate: new Date(),
         startTime: new Date(),
-        shift: 'Day', // Default shift
+        shift: 'day',
         createdAt: new Date()
       };
 
@@ -200,18 +231,23 @@ export default function SupervisorDashboard() {
     }
   };
 
+  const normalizedDept = normalizeDepartment(userDepartment);
+
   // Filter checklists based on departmental rules
-  const deptConfig = DEPARTMENTS_CONFIG.find(d => d.id === userDepartment);
+  const deptConfig = DEPARTMENTS_CONFIG.find(d => d.id === normalizedDept);
   let availableChecklists = deptConfig ? [...deptConfig.checklists] : [];
 
   // Conditional Aggregation Access
   const hasHubAssignment = hubAssignments && hubAssignments.length > 0;
-  if (hasHubAssignment && userDepartment !== 'aggregation') {
+  if (hasHubAssignment && normalizedDept !== 'aggregation') {
     const aggConfig = DEPARTMENTS_CONFIG.find(d => d.id === 'aggregation');
     if (aggConfig) {
-      availableChecklists = [...new Set([...availableChecklists, ...aggConfig.checklists])];
+      availableChecklists = [...availableChecklists, ...aggConfig.checklists];
     }
   }
+  
+  // Ensure unique elements in case of misconfiguration
+  availableChecklists = Array.from(new Set(availableChecklists));
 
   // Helper to format labels accurately
   const getLabel = (id) => {
@@ -352,7 +388,7 @@ export default function SupervisorDashboard() {
           <DialogHeader>
             <DialogTitle>Start New Checklist</DialogTitle>
             <DialogDescription>
-              Select a checklist to initiate a new task assignment for yourself.
+              Select an available checklist to start a new task. If an in-progress task already exists for the selected checklist, you will be redirected to continue it.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
@@ -363,14 +399,36 @@ export default function SupervisorDashboard() {
                   <SelectValue placeholder="Select a checklist..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableChecklists.map(checklistId => (
-                    <SelectItem key={checklistId} value={checklistId}>
-                      {getLabel(checklistId)}
-                    </SelectItem>
-                  ))}
+                  {availableChecklists.map(checklistId => {
+                    const isInProgress = todayTasks.some(t => t.checklistType === checklistId && t.status === 'in-progress' && !t.submissionId);
+                    const isAssigned = !isInProgress && todayTasks.some(t => t.checklistType === checklistId && (t.status === 'assigned' || !t.status) && !t.submissionId);
+                    return (
+                      <SelectItem key={checklistId} value={checklistId}>
+                        {getLabel(checklistId)}{' '}
+                        {isInProgress && <span className="text-blue-500 font-medium">(In Progress)</span>}
+                        {isAssigned && <span className="text-gray-500 font-medium">(Assigned)</span>}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
+            {selectedChecklistId && todayTasks.some(t => t.checklistType === selectedChecklistId && t.status === 'in-progress' && !t.submissionId) && (
+              <Alert className="bg-blue-50 border-blue-200 mt-4">
+                <AlertDescription className="text-blue-800 text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  You already have an in-progress task for this checklist. Clicking "Continue Task" will resume it.
+                </AlertDescription>
+              </Alert>
+            )}
+            {selectedChecklistId && !todayTasks.some(t => t.checklistType === selectedChecklistId && t.status === 'in-progress' && !t.submissionId) && todayTasks.some(t => t.checklistType === selectedChecklistId && (t.status === 'assigned' || !t.status) && !t.submissionId) && (
+              <Alert className="bg-amber-50 border-amber-200 mt-4">
+                <AlertDescription className="text-amber-800 text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  You have an assigned task for this checklist. Clicking "Start Task" will open it.
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsNewTaskDialogOpen(false)}>Cancel</Button>
@@ -378,7 +436,11 @@ export default function SupervisorDashboard() {
               onClick={handleStartNewTask} 
               disabled={!selectedChecklistId || creatingTask}
             >
-              {creatingTask ? 'Starting...' : 'Start Task'}
+              {creatingTask ? 'Starting...' : (
+                selectedChecklistId && todayTasks.some(t => t.checklistType === selectedChecklistId && t.status === 'in-progress' && !t.submissionId)
+                  ? 'Continue Task'
+                  : 'Start Task'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

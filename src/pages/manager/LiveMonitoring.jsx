@@ -27,10 +27,12 @@ import { hubTransferChecklistConfig as hubTransfer } from '@/features/warehousin
 import { warehouseClosingChecklistConfig as warehouseClosing } from '@/features/warehousing/config/warehouseClosingChecklistConfig';
 import { warehouseMaintenanceChecklistConfig as warehouseMaintenance } from '@/features/warehousing/config/warehouseMaintenanceChecklist';
 import { warehouseInventoryChecklistConfig as warehouseInventory } from '@/features/warehousing/config/warehouseInventoryChecklist';
+import { loadingDispatchChecklistConfig as loadingDispatch } from '@/features/warehousing/config/loadingProduceConfig';
 import { outreachEngagementChecklistConfig as outreachEngagement } from '@/features/data-field/config/outreachEngagementChecklist';
 import { salesMarketingChecklistConfig as salesMarketing } from '@/features/data-field/config/salesMarketingChecklist';
 import { fieldMonitoringQAChecklistConfig as fieldMonitoringQA } from '@/features/data-field/config/Fieldmonitoringqachecklist';
 import { dataCallCentreOversightChecklistConfig as dataCallCentreOversight } from '@/features/data-field/config/Datacallcentreoversightchecklist';
+import { normalizeDepartment } from '@/lib/departmentNormalize';
 
 const CHECKLIST_CONFIGS = {
   'milling': millingChecklistConfig,
@@ -40,11 +42,12 @@ const CHECKLIST_CONFIGS = {
   'warehouseclosing': warehouseClosing,
   'warehousemaintenance': warehouseMaintenance,
   'warehouseinventory': warehouseInventory,
+  'loading': loadingDispatch,
   'outreach-engagement': outreachEngagement,
   'sales-marketing': salesMarketing,
   'field-monitoring-qa': fieldMonitoringQA,
   'data-callcentre-oversight': dataCallCentreOversight,
-  // Legacy mappings
+  // Legacy key mappings (for old tasks already in Firestore)
   'hub-collection-offloading': hubCollection,
   'hub-transfer-inspection': hubTransfer,
   'warehouse-closing-offloading': warehouseClosing,
@@ -64,8 +67,8 @@ export default function LiveMonitoring() {
 
     const tasksQuery = query(
       collection(db, 'tasks'),
-      where('department', '==', userDepartment),
-      where('status', 'in', ['in-progress', 'pending'])
+      where('department', '==', normalizeDepartment(userDepartment)),
+      where('status', 'in', ['in-progress', 'assigned', 'pending'])
     );
 
     const unsubscribe = onSnapshot(tasksQuery, async (snapshot) => {
@@ -111,7 +114,8 @@ export default function LiveMonitoring() {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'in-progress': return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200">In Progress</Badge>;
-      case 'pending': return <Badge variant="outline" className="bg-orange-50 text-orange-600 border-orange-200">Pending Start</Badge>;
+      case 'assigned': return <Badge variant="outline" className="bg-orange-50 text-orange-600 border-orange-200">Pending Start</Badge>;
+      case 'pending': return <Badge variant="outline" className="bg-orange-50 text-orange-600 border-orange-200">Awaiting Approval</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
@@ -149,7 +153,7 @@ export default function LiveMonitoring() {
 
   const inProgressCount = activeTasks.filter(t => t.status === 'in-progress').length;
   const compliantCount = activeTasks.filter(t => t.locationCompliant === true).length;
-  const pendingCount = activeTasks.filter(t => t.status === 'pending').length;
+  const pendingCount = activeTasks.filter(t => t.status === 'assigned' || (t.status === 'pending' && !t.submissionId)).length;
 
   return (
     <div className="space-y-6">

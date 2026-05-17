@@ -107,7 +107,7 @@ export const briquetteChecklistConfig = {
             fields: [
                 { id: 'ash-content', type: 'number', label: 'Test ash content of sample (%)' },
                 { id: 'calorific-value', type: 'number', label: 'Check and record calorific value (MJ/kg)' },
-                { id: 'qc-supervisor-signoff', type: 'text', label: 'Supervisor Review & Sign-off', placeholder: 'Supervisor Name' },
+                { id: 'qc-supervisor-signoff', type: 'text', label: 'Supervisor Review & Sign-off', autoPopulate: 'supervisorName', placeholder: 'Supervisor Name' },
                 { id: 'qc-timestamp', type: 'text', label: 'QC Timestamp', autoPopulate: 'timestamp', readOnly: true }
             ]
         },
@@ -143,7 +143,7 @@ export const briquetteChecklistConfig = {
             fields: [
                 { id: 'all-steps-completed', type: 'checkbox', label: 'Confirm all steps completed' },
                 { id: 'logs-checked', type: 'checkbox', label: 'Check hourly logs (production, staff, material, fuel)' },
-                { id: 'final-signoff', type: 'text', label: 'Sign off (Name)', placeholder: 'Supervisor Name' },
+                { id: 'final-signoff', type: 'text', label: 'Sign off (Name)', autoPopulate: 'supervisorName', placeholder: 'Supervisor Name' },
                 { id: 'final-timestamp', type: 'text', label: 'Date & Time', autoPopulate: 'timestamp', readOnly: true }
             ]
         }

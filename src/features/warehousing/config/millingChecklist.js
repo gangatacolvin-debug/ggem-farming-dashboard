@@ -6,7 +6,6 @@ export const millingChecklistConfig = {
     title: 'Milling Process Checklist with Hourly Progress',
     description: 'Standard Operating Procedure for Milling Operations with Hourly Tracking',
 
-    // Location verification (Must be at Main Warehouse/Mill)
     locationCheckpoints: {
         'mill-activation': 'main-warehouse',
         'hourly-checks': 'main-warehouse'
@@ -31,7 +30,20 @@ export const millingChecklistConfig = {
                     ],
                     required: true
                 },
-                { id: 'supervisor-name', type: 'text', label: 'Supervisor Name', placeholder: 'Enter name', required: true },
+                { id: 'supervisor-name', type: 'text', label: 'Supervisor Name', autoPopulate: 'supervisorName', placeholder: 'Enter name', required: true },
+
+                // ── NEW: Default variety for the shift ──
+                {
+                    id: 'default-variety',
+                    type: 'select',
+                    label: 'Rice Variety (Shift Default)',
+                    options: [
+                        { value: 'kayanjamalo', label: 'Kayanjamalo' },
+                        { value: 'kilombero', label: 'Kilombero' }
+                    ],
+                    required: true
+                },
+
                 {
                     id: 'team-allocation-info',
                     type: 'info',
@@ -64,7 +76,7 @@ export const millingChecklistConfig = {
                 { id: 'mill-switch-on', type: 'checkbox', label: 'Switch on the mill' },
                 { id: 'initial-paddy-weight', type: 'number', label: 'Weigh paddy rice (kg)', placeholder: '0' },
                 { id: 'moisture-content', type: 'number', label: 'Conduct moisture test (%)', placeholder: '14' },
-                { id: 'rice-type', type: 'text', label: 'Record rice type', placeholder: 'e.g., Basmati, Kilombero' },
+                // ── REMOVED free-text rice-type; variety is now set in team-allocation ──
                 { id: 'initial-qc', type: 'checkbox', label: 'Perform initial quality check' },
                 { id: 'activation-time', type: 'time', label: 'Timestamp mill activation', required: true }
             ]
@@ -77,7 +89,7 @@ export const millingChecklistConfig = {
             fields: [
                 { id: 'feed-team-ready', type: 'checkbox', label: 'Paddy Feed Team: Feeding into mill (2)', required: true },
                 { id: 'receiving-ready', type: 'checkbox', label: 'Rice Receiving: Receiving pure rice from scale (1)', required: true },
-                { id: 'stacking-ready', type: 'checkbox', label: 'Stacking: Milled, Broken, Bran, Dust, Stones organized', required: true },
+                { id: 'stacking-ready', type: 'checkbox', label: 'Stacking: Milled, Broken, Colorsorter, Dust, Stones organized', required: true },
                 { id: 'qc-ready', type: 'checkbox', label: 'Quality Check: Monitoring ongoing (2)', required: true },
                 { id: 'cleaner-ready', type: 'checkbox', label: 'Cleaner: Maintaining hygiene (1)', required: true }
             ]
@@ -86,23 +98,44 @@ export const millingChecklistConfig = {
             id: 'hourly-checks',
             title: 'Step 4: Hourly Progress Checks',
             icon: '⏱️',
-            description: 'Record inputs, outputs, and efficiency every hour',
+            description: 'Record inputs and outputs every hour. Husk & Bran, Recovery % and Breakage % are calculated automatically.',
             fields: [
                 {
                     id: 'hourlyLogs',
                     type: 'log-table',
                     label: 'Hourly Production Log',
+                    // Tells LogTableField which field holds the shift default variety
+                    defaultVarietyField: 'default-variety',
                     columns: [
-                        { key: 'time', label: 'Time', type: 'time', placeholder: 'HH:MM' },
+                        // ── Time: auto-fills on row add ──
+                        { key: 'time', label: 'Time', type: 'time', placeholder: 'HH:MM', autoFillTime: true },
+
+                        // ── Variety: inherits shift default, overridable per row ──
+                        {
+                            key: 'variety',
+                            label: 'Variety',
+                            type: 'select',
+                            options: [
+                                { value: 'kayanjamalo', label: 'Kayanjamalo' },
+                                { value: 'kilombero', label: 'Kilombero' }
+                            ]
+                        },
+
+                        // ── Manual inputs ──
                         { key: 'unmilledBags', label: 'Unmilled Bags', type: 'number', placeholder: '0' },
                         { key: 'paddyFed', label: 'Paddy Fed (kg)', type: 'number', placeholder: '0' },
                         { key: 'milledRice', label: 'Milled (kg)', type: 'number', placeholder: '0' },
                         { key: 'brokenRice', label: 'Broken (kg)', type: 'number', placeholder: '0' },
-                        { key: 'brokenHusk', label: 'Brk+Husk (kg)', type: 'number', placeholder: '0' },
-                        { key: 'bran', label: 'Bran (kg)', type: 'number', placeholder: '0' },
-                        { key: 'dust', label: 'Dust (kg)', type: 'number', placeholder: '0' },
-                        { key: 'stones', label: 'Stones (kg)', type: 'number', placeholder: '0' },
+                        { key: 'colorsorter', label: 'Colorsorter (kg)', type: 'number', placeholder: '0' },
+                        { key: 'dustLiters', label: 'Dust w/ Listers (kg)', type: 'number', placeholder: '0' },
+                        { key: 'stonesRice', label: 'Rice w/ Stones (kg)', type: 'number', placeholder: '0' },
                         { key: 'downtime', label: 'Downtime (min)', type: 'number', placeholder: '0' },
+
+                        // ── Auto-calculated (readOnly) ──
+                        { key: 'huskBran', label: 'Husk & Bran (kg)', type: 'number', readOnly: true, calculated: true, placeholder: '—' },
+                        { key: 'recoveryPct', label: 'Recovery %', type: 'number', readOnly: true, calculated: true, placeholder: '—' },
+                        { key: 'breakagePct', label: 'Breakage %', type: 'number', readOnly: true, calculated: true, placeholder: '—' },
+
                         { key: 'notes', label: 'Incidents', type: 'text', placeholder: 'Notes...' }
                     ]
                 }
@@ -112,22 +145,46 @@ export const millingChecklistConfig = {
             id: 'post-milling',
             title: 'Step 5: Post-Milling Summary',
             icon: '📝',
-            description: 'End of Batch/Shift Summary & Validation',
+            description: 'End of Batch/Shift Summary. Totals are calculated from hourly logs. Use override only to correct an error.',
             fields: [
-                { id: 'total-unmilled', type: 'number', label: 'Total Unmilled Rice (kg)', required: true },
-                { id: 'total-milled', type: 'number', label: 'Total Milled Rice (kg)', required: true },
-                { id: 'total-broken', type: 'number', label: 'Total Broken Rice (kg)', required: true },
-                { id: 'total-broken-husk', type: 'number', label: 'Total Broken + Husk (kg)' },
-                { id: 'total-bran', type: 'number', label: 'Total Bran (kg)' },
-                { id: 'total-dust', type: 'number', label: 'Total Dust (kg)' },
-                { id: 'total-stones', type: 'number', label: 'Total Stones (kg)' },
+                // ── All totals: read-only, summed from hourly logs ──
+                // type: 'milling-summary' is a new field type handled in FieldRenderer
+                {
+                    id: 'milling-summary',
+                    type: 'milling-summary',
+                    label: 'Shift Totals & KPIs',
+                    // Points to the hourly log field that is the data source
+                    sourceField: 'hourlyLogs',
+                    // Columns to sum from each row
+                    totals: [
+                        { key: 'paddyFed', label: 'Total Paddy Rice (kg)', required: true },
+                        { key: 'milledRice', label: 'Total Milled Rice (kg)', required: true },
+                        { key: 'brokenRice', label: 'Total Broken Rice (kg)', required: true },
+                        { key: 'colorsorter', label: 'Total Colorsorter Rice (kg)' },
+                        { key: 'dustLiters', label: 'Total Dust w/ Listers (kg)' },
+                        { key: 'stonesRice', label: 'Total Rice w/ Stones (kg)' },
+                        { key: 'huskBran', label: 'Total Husk & Bran (kg)' },
+                        { key: 'downtime', label: 'Total Downtime (min)' }
+                    ],
+                    // KPIs derived from totals
+                    kpis: [
+                        {
+                            key: 'yieldPct',
+                            label: 'Overall Milling Recovery %',
+                            formula: 'milledRice / paddyFed * 100'
+                        },
+                        {
+                            key: 'breakagePct',
+                            label: 'Overall Breakage %',
+                            formula: 'brokenRice / paddyFed * 100'
+                        }
+                    ],
+                    // Variety breakdown table
+                    varietyBreakdown: true
+                },
 
-                // KPIs
-                { id: 'final-yield-ratio', type: 'number', label: 'Final Yield Ratio (%)', placeholder: '(Milled / Input) * 100', readOnly: false },
-                { id: 'final-broken-percent', type: 'number', label: 'Final % Broken Rice', placeholder: '(Broken / Output) * 100', readOnly: false },
-
-                // Sign off
-                { id: 'supervisor-signoff', type: 'text', label: 'Supervisor Sign-off', placeholder: 'Name', required: true },
+                // ── Sign off ──
+                { id: 'supervisor-signoff', type: 'text', label: 'Supervisor Sign-off', autoPopulate: 'supervisorName', placeholder: 'Name', required: true },
                 { id: 'security-signoff', type: 'text', label: 'Security Sign-off', placeholder: 'Name', required: true },
                 { id: 'closure-time', type: 'time', label: 'Timestamp Milling Closure', required: true }
             ]

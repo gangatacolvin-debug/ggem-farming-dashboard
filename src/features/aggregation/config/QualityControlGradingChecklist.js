@@ -53,7 +53,12 @@ export const qualityControlGradingConfig = {
                     label: 'Moisture & Grading Records',
                     columns: [
                         { key: 'clubGroupName', label: 'Club / Group', type: 'text', placeholder: 'Club name' },
-                        { key: 'farmerName', label: 'Farmer Name', type: 'text', placeholder: 'Full name' },
+                        {
+                            key: 'farmerName',
+                            label: 'Farmer Name',
+                            type: 'farmer-search',
+                            placeholder: 'Search farmer…',
+                        },
                         { key: 'variety', label: 'Variety', type: 'text', placeholder: 'Kilombero / Kayanjamalo' },
                         { key: 'moisturePct', label: 'Moisture %', type: 'number', placeholder: '12' },
                         { key: 'grade', label: 'Grade', type: 'text', placeholder: 'B1 / B2 / B3 / Reject' },
@@ -73,7 +78,15 @@ export const qualityControlGradingConfig = {
             requiresLocation: false,
             fields: [
                 { id: 'mixed-variety-found', type: 'checkbox', label: 'Mixed variety batches found' },
-                { id: 'contamination-found', type: 'checkbox', label: 'Contamination found (maize, stones, debris)' },
+                { 
+                    id: 'contamination-found', 
+                    type: 'checkbox', 
+                    label: 'Contamination found (maize, stones, debris)',
+                    flag: {
+                        severity: 'critical',
+                        message: 'Contamination detected during aggregation quality assessment'
+                    }
+                },
                 { id: 'mud-debris-found', type: 'checkbox', label: 'Mud or debris present in any batch' },
                 { id: 'sprouting-spoilage-found', type: 'checkbox', label: 'Sprouting or spoilage found' },
                 { id: 'batches-rejected-count', type: 'number', label: 'Total Batches Rejected', placeholder: '0' },

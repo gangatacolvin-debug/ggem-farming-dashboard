@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, User } from 'lucide-react';
+import { normalizeDepartment } from '@/lib/departmentNormalize';
 
 export default function ManagerSchedules() {
     const { userDepartment } = useAuth();
@@ -40,12 +41,13 @@ export default function ManagerSchedules() {
 
     useEffect(() => {
         if (!userDepartment) return;
+        const normalizedDept = normalizeDepartment(userDepartment);
 
         // Fetch supervisors
         const fetchSups = async () => {
             const q = query(
                 collection(db, 'users'),
-                where('department', '==', userDepartment),
+                where('department', '==', normalizedDept),
                 where('role', '==', 'supervisor')
             );
             const snap = await getDocs(q);
@@ -56,7 +58,7 @@ export default function ManagerSchedules() {
         // Fetch tasks for the query range (simplified to all for now or optimize later)
         const qTasks = query(
             collection(db, 'tasks'),
-            where('department', '==', userDepartment)
+            where('department', '==', normalizedDept)
         );
         const unsub = onSnapshot(qTasks, (snap) => {
             setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -75,8 +77,8 @@ export default function ManagerSchedules() {
                 assignedTo: newTask.supervisor,
                 scheduledDate: selectedDate,
                 shift: newTask.shift,
-                status: 'pending',
-                department: userDepartment,
+                status: 'assigned',
+                department: normalizeDepartment(userDepartment),
                 createdAt: new Date(),
                 locationCompliant: null
             });
@@ -144,7 +146,8 @@ export default function ManagerSchedules() {
                                     <div className="flex justify-between items-start mb-1">
                                         <Badge variant="outline" className="text-[10px] px-1 h-5">{task.shift}</Badge>
                                         <span className={`w-2 h-2 rounded-full ${task.status === 'completed' ? 'bg-green-500' :
-                                            task.status === 'in-progress' ? 'bg-blue-500' : 'bg-gray-300'
+                                            task.status === 'in-progress' ? 'bg-blue-500' : 
+                                            task.status === 'assigned' ? 'bg-orange-300' : 'bg-gray-300'
                                             }`} />
                                     </div>
                                     <p className="font-medium text-xs line-clamp-2 mb-1">{task.checklistName}</p>

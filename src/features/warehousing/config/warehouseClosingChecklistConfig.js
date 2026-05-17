@@ -109,7 +109,7 @@ export const warehouseClosingChecklistConfig = {
             title: 'Supervisor Sign-Off',
             fields: [
                 { id: 'all-stages-completed', type: 'checkbox', label: 'All stages completed & logged', required: true },
-                { id: 'supervisor-name', type: 'text', label: 'Supervisor Name', placeholder: 'Enter full name', required: true },
+                { id: 'supervisor-name', type: 'text', label: 'Supervisor Name', autoPopulate: 'supervisorName', placeholder: 'Enter full name', required: true },
                 { id: 'supervisor-signature', type: 'text', label: 'Supervisor Signature', placeholder: 'Type name to sign' },
                 { id: 'signoff-date', type: 'date', label: 'Sign-off Date', placeholder: 'Select date' }
             ]

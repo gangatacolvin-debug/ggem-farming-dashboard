@@ -53,7 +53,12 @@ export const weighingRecordingConfig = {
                     label: 'Farmer Weighing Records',
                     columns: [
                         { key: 'clubGroupName', label: 'Club / Group', type: 'text', placeholder: 'Club name' },
-                        { key: 'farmerName', label: 'Farmer Name', type: 'text', placeholder: 'Full name' },
+                        {
+                            key: 'farmerName',
+                            label: 'Farmer Name',
+                            type: 'farmer-search',
+                            placeholder: 'Search farmer…',
+                        },
                         { 
                             key: 'farmerType', 
                             label: 'Farmer Type', 

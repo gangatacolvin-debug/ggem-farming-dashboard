@@ -32,6 +32,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
+  SelectSeparator,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -54,18 +57,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DEPARTMENTS_CONFIG } from '@/config/departments';
-
-function normalizeDepartment(dept) {
-  const raw = String(dept || '').toLowerCase().trim();
-  if (!raw) return '';
-
-  // Accept common naming variants from user profiles.
-  if (raw.includes('warehous')) return 'warehouse';
-  if (raw.includes('data') || raw.includes('field')) return 'data-field';
-  if (raw.includes('aggregat')) return 'aggregation';
-
-  return raw;
-}
+import { normalizeDepartment } from '@/lib/departmentNormalize';
 
 export default function TaskManagement() {
   const { userDepartment } = useAuth();
@@ -92,7 +84,7 @@ export default function TaskManagement() {
     // Fetch tasks
     const tasksQuery = query(
       collection(db, 'tasks'),
-      where('department', '==', userDepartment),
+      where('department', '==', normalizeDepartment(userDepartment)),
       orderBy('createdAt', 'desc')
     );
 
@@ -121,49 +113,28 @@ export default function TaskManagement() {
     const fetchAssignees = async () => {
       try {
         const usersRef = collection(db, 'users');
-        let allUsers = [];
+        const snap = await getDocs(usersRef);
+        const allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Robust department matching for Firestore queries
-        const qDepartment = normalizeDepartment(userDepartment);
-
-        console.log(`DEBUG: Manager Dept="${userDepartment}", Querying Firestore for Dept="${qDepartment}"`);
-
-        if (qDepartment === 'aggregation') {
-          // 1. Get everyone in aggregation department
-          const q1 = query(usersRef, where('department', '==', 'aggregation'));
-          const snap1 = await getDocs(q1);
-          
-          const q2 = query(usersRef, where('role', 'in', ['supervisor', 'hub-coordinator', 'security-lead', 'data-team', 'warehouse-supervisor']));
-          const snap2 = await getDocs(q2);
-
-          const usersMap = new Map();
-          snap1.docs.forEach(d => usersMap.set(d.id, { id: d.id, ...d.data() }));
-          snap2.docs.forEach(d => {
-            const data = d.data();
-            if (data.hubAssignments && data.hubAssignments.length > 0) {
-              usersMap.set(d.id, { id: d.id, ...data });
-            }
-          });
-          allUsers = Array.from(usersMap.values());
-        } else {
-          const q = query(usersRef, where('department', '==', qDepartment));
-          const snap = await getDocs(q);
-          allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        }
-
-        const dept = DEPARTMENTS_CONFIG.find((d) => {
-          const managerDept = normalizeDepartment(userDepartment);
-          const configId = normalizeDepartment(d.id);
-          return configId === managerDept;
+        const validAssignees = allUsers.filter(u => {
+           const uDept = normalizeDepartment(u.department);
+           const deptConfig = DEPARTMENTS_CONFIG.find(d => d.id === uDept);
+           if (!deptConfig) return false;
+           
+           const roles = deptConfig.taskAssigneeRoles || ['supervisor'];
+           return roles.includes(u.role);
         });
-        console.log(`DEBUG: Matched Config Dept="${dept?.id}", Found ${allUsers.length} total supervisors`);
-        const roleAllow = dept?.taskAssigneeRoles;
 
-        if (roleAllow?.length) {
-          setAssignees(allUsers.filter((u) => roleAllow.includes(u.role)));
-        } else {
-          setAssignees(allUsers.filter((u) => u.role === 'supervisor'));
-        }
+        const managerDept = normalizeDepartment(userDepartment);
+        validAssignees.sort((a, b) => {
+           const aDept = normalizeDepartment(a.department);
+           const bDept = normalizeDepartment(b.department);
+           if (aDept === managerDept && bDept !== managerDept) return -1;
+           if (bDept === managerDept && aDept !== managerDept) return 1;
+           return aDept.localeCompare(bDept);
+        });
+
+        setAssignees(validAssignees);
       } catch (err) {
         console.error('Error fetching assignees:', err);
       }
@@ -192,8 +163,9 @@ export default function TaskManagement() {
         assignedTo: formData.assignedTo,
         scheduledDate: scheduledDate,
         shift: formData.shift,
-        status: 'pending',
+        status: 'assigned',
         department: normalizeDepartment(userDepartment),
+        assignerDepartment: normalizeDepartment(userDepartment),
         createdAt: new Date(),
         locationCompliant: null
       });
@@ -232,7 +204,8 @@ export default function TaskManagement() {
     switch (status) {
       case 'completed': return <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200">Completed</Badge>;
       case 'in-progress': return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200">In Progress</Badge>;
-      case 'pending': return <Badge variant="outline" className="text-gray-600">Pending</Badge>;
+      case 'pending': return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200">Awaiting Approval</Badge>;
+      case 'assigned': return <Badge variant="outline" className="text-gray-600">Assigned</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
     }
   };
@@ -482,11 +455,43 @@ export default function TaskManagement() {
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {assignees.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {`${getAssigneeName(u.id)}${u.role ? ` · ${u.role}` : ''}`}
-                    </SelectItem>
-                  ))}
+                  {(() => {
+                    const managerDept = normalizeDepartment(userDepartment);
+                    const grouped = {};
+                    assignees.forEach(u => {
+                      const d = normalizeDepartment(u.department) || 'unknown';
+                      if (!grouped[d]) grouped[d] = [];
+                      grouped[d].push(u);
+                    });
+
+                    const renderGroup = (deptId, users) => {
+                      const dConfig = DEPARTMENTS_CONFIG.find(d => d.id === deptId);
+                      const dName = dConfig ? dConfig.name : deptId;
+                      return (
+                        <SelectGroup key={deptId}>
+                          <SelectLabel className="font-semibold text-primary">{dName}</SelectLabel>
+                          {users.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {`${getAssigneeName(u.id)}${u.role ? ` · ${u.role}` : ''}`}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      );
+                    };
+
+                    const result = [];
+                    if (grouped[managerDept]) {
+                      result.push(renderGroup(managerDept, grouped[managerDept]));
+                      delete grouped[managerDept];
+                    }
+                    
+                    Object.keys(grouped).forEach((deptId) => {
+                      result.push(<SelectSeparator key={`sep-${deptId}`} />);
+                      result.push(renderGroup(deptId, grouped[deptId]));
+                    });
+
+                    return result;
+                  })()}
                 </SelectContent>
               </Select>
               {assignees.length === 0 && (

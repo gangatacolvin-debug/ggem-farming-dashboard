@@ -13,8 +13,18 @@ import BriquetteTab from './tabs/BriquetteTab';
 import HubTransfersTab from './tabs/HubTransfersTab';
 import InventoryAuditsTab from './tabs/InventoryAuditsTab';
 import {
-    aggregateMillingData, aggregateBriquetteData, aggregateHubTransfersData, aggregateInventoryData
+    aggregateMillingData, aggregateBriquetteData, aggregateHubTransfersData, aggregateInventoryData,
+    getValue,
+    getSubmissionDateForTrend,
 } from '../kpiService';
+import { normalizeChecklistType } from '@/config/departments';
+
+const MILLING_CHECKLIST_TYPES = new Set(['milling', 'milling-process']);
+
+function isMillingRecord(doc) {
+    const ct = doc?.checklistType;
+    return MILLING_CHECKLIST_TYPES.has(ct) || MILLING_CHECKLIST_TYPES.has(normalizeChecklistType(ct));
+}
 
 
 
@@ -38,7 +48,26 @@ const KPICard = ({ title, value, subtext, icon: Icon, colorClass = 'text-blue-60
 export default function WarehouseProcessingDashboard({ tasks, liveTasks, embedded = false }) {
     const [dateRange, setDateRange] = useState('7d');
 
-    const millingData = useMemo(() => aggregateMillingData(tasks), [tasks]);
+    const allMillingRecords = useMemo(() => {
+        const fromSubmissions = tasks.filter(isMillingRecord);
+        const seenTaskIds = new Set(fromSubmissions.map((s) => s.taskId).filter(Boolean));
+
+        const fromLive = (liveTasks || [])
+            .filter((t) => isMillingRecord(t) && t.checklistProgress && !seenTaskIds.has(t.id))
+            .map((t) => ({
+                ...t.checklistProgress,
+                id: t.submissionId || t.id,
+                taskId: t.id,
+                checklistType: t.checklistType,
+                checklistProgress: t.checklistProgress,
+                status: t.status || 'in-progress',
+                submittedAt: t.startTime || t.createdAt,
+            }));
+
+        return [...fromSubmissions, ...fromLive];
+    }, [tasks, liveTasks]);
+
+    const millingData = useMemo(() => aggregateMillingData(allMillingRecords), [allMillingRecords]);
     const briquetteData = useMemo(() => aggregateBriquetteData(tasks), [tasks]);
     const hubData = useMemo(() => aggregateHubTransfersData(tasks), [tasks]);
     const inventoryData = useMemo(() => aggregateInventoryData(tasks), [tasks]);
@@ -46,10 +75,18 @@ export default function WarehouseProcessingDashboard({ tasks, liveTasks, embedde
     const supervisorData = useMemo(() => {
         const sups = {};
         tasks.forEach(t => {
-            const name = t.assignedTo || 'Unassigned';
+            const actorId = t.submittedBy || t.supervisorId || t.assignedTo;
+            const name =
+                t.submittedByName ||
+                t.supervisorName ||
+                getValue(t, 'supervisor-name') ||
+                getValue(t, 'transfer-lead') ||
+                actorId ||
+                'Unassigned';
             if (!sups[name]) sups[name] = { name, submissions: 0, flags: 0, approvals: 0 };
             sups[name].submissions++;
-            if (t.status === 'completed' || t.status === 'approved') sups[name].approvals++;
+            const st = String(t.status || '').toLowerCase();
+            if (st === 'completed' || st === 'approved') sups[name].approvals++;
             if (t.locationCompliant === false || (t.formData && t.formData['machinery-inspected'] === false)) sups[name].flags++;
         });
         return Object.values(sups).map(s => ({
@@ -62,11 +99,23 @@ export default function WarehouseProcessingDashboard({ tasks, liveTasks, embedde
     const weeklyTrendData = useMemo(() => {
         const days = {};
         tasks.forEach(t => {
-            const dateStr = t.timestamp?.toDate ? format(t.timestamp.toDate(), 'EEE') : 'Unknown';
-            if (dateStr !== 'Unknown') {
-                if (!days[dateStr]) days[dateStr] = { name: dateStr, milling: 0, briquette: 0 };
-                if (t.checklistType.includes('milling')) days[dateStr].milling += Number(t.formData?.['total-milled']) || Number(t.formData?.['total-milled-rice']) || 0;
-                if (t.checklistType.includes('briquette')) days[dateStr].briquette += Number(t.formData?.['actual-output']) || 0;
+            const d = getSubmissionDateForTrend(t);
+            const dateStr = d ? format(d, 'EEE') : 'Unknown';
+            if (dateStr === 'Unknown') return;
+            if (!days[dateStr]) days[dateStr] = { name: dateStr, milling: 0, briquette: 0 };
+            const ct = String(t.checklistType || '').toLowerCase();
+            if (ct.includes('milling')) {
+                days[dateStr].milling +=
+                    Number(getValue(t, 'total-milled')) ||
+                    Number(getValue(t, 'total-milled-rice')) ||
+                    Number(getValue(t, 'totalOutput')) ||
+                    0;
+            }
+            if (ct.includes('briquette')) {
+                days[dateStr].briquette +=
+                    Number(getValue(t, 'actual-output')) ||
+                    Number(getValue(t, 'totalOutput')) ||
+                    0;
             }
         });
         return Object.values(days);
@@ -238,14 +287,20 @@ export default function WarehouseProcessingDashboard({ tasks, liveTasks, embedde
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {supervisorData.map((sup, idx) => (
+                                        {supervisorData.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                                                    No warehousing submissions in this view yet. Metrics include approved, completed, and rejected checklists.
+                                                </td>
+                                            </tr>
+                                        ) : supervisorData.map((sup, idx) => (
                                             <tr key={idx} className="border-b hover:bg-gray-50">
                                                 <td className="px-4 py-3 font-medium">{sup.name}</td>
                                                 <td className="px-4 py-3 text-gray-500">{sup.dept}</td>
                                                 <td className="px-4 py-3">{sup.submissions}</td>
                                                 <td className="px-4 py-3">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${sup.approvalRate >= 85 ? 'bg-green-100 text-green-700' :
-                                                        sup.approvalRate < 60 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${Number(sup.approvalRate) >= 85 ? 'bg-green-100 text-green-700' :
+                                                        Number(sup.approvalRate) < 60 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
                                                         }`}>
                                                         {sup.approvalRate}%
                                                     </span>
@@ -262,7 +317,7 @@ export default function WarehouseProcessingDashboard({ tasks, liveTasks, embedde
 
                 {/* TAB 2: MILLING */}
                 <TabsContent value="milling" className="mt-6 space-y-6">
-                    <MillingTab tasks={tasks} data={millingData} />
+                    <MillingTab data={millingData} submissions={allMillingRecords} />
                 </TabsContent>
 
                 {/* TAB 3: BRIQUETTE */}

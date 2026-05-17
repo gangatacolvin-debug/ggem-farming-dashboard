@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/context/AuthContext';
 
 export default function Unauthorized() {
   const navigate = useNavigate();
+  const { userRole, userDepartment } = useAuth();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -18,7 +20,17 @@ export default function Unauthorized() {
         </CardHeader>
         <CardContent className="flex flex-col items-center space-y-4">
           <div className="text-6xl">🚫</div>
-          <Button onClick={() => navigate('/dashboard')}>
+          
+          <div className="bg-gray-100 p-3 rounded-md w-full text-xs font-mono space-y-1">
+            <p><span className="font-bold">Role:</span> {userRole || 'undefined'}</p>
+            <p><span className="font-bold">Department:</span> {
+              Array.isArray(userDepartment) 
+                ? userDepartment.join(', ') 
+                : (userDepartment || 'undefined')
+            }</p>
+          </div>
+
+          <Button onClick={() => navigate('/dashboard')} className="w-full">
             Go to Dashboard
           </Button>
         </CardContent>

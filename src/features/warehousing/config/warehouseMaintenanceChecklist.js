@@ -114,7 +114,7 @@ export const warehouseMaintenanceChecklistConfig = {
                 { id: 'findings-recorded', type: 'checkbox', label: 'Record all findings and maintenance actions in CRM', required: true },
                 { id: 'chemical-use-logged', type: 'text', label: 'Log pest control replacements/chemical use', placeholder: 'N/A if none' },
                 { id: 'repairs-reported', type: 'text', label: 'Report anomalies or repairs required', placeholder: 'Describe issues...' },
-                { id: 'supervisor-signoff', type: 'text', label: 'Supervisor Name (Sign-off)', required: true },
+                { id: 'supervisor-signoff', type: 'text', label: 'Supervisor Name (Sign-off)', autoPopulate: 'supervisorName', required: true },
                 { id: 'closure-time', type: 'time', label: 'Timestamp closure', required: true }
             ]
         }

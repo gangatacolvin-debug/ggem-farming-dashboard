@@ -33,11 +33,12 @@ import {
   MapPin,
   FileText,
   Eye,
-  AlertTriangle,  // â† ADD THIS
-  AlertCircle     // â† Make sure this is here too
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { normalizeDepartment } from '@/lib/departmentNormalize';
 
 export default function SubmissionsReview() {
   const { userDepartment, currentUser } = useAuth();
@@ -48,6 +49,7 @@ export default function SubmissionsReview() {
   const [feedback, setFeedback] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [success, setSuccess] = useState('');
+  const [submissionFlags, setSubmissionFlags] = useState([]);
 
   useEffect(() => {
     if (!userDepartment) return;
@@ -55,7 +57,7 @@ export default function SubmissionsReview() {
     // Query all tasks for this department that have been submitted (pending review or resolved)
     const tasksQuery = query(
       collection(db, 'tasks'),
-      where('department', '==', userDepartment),
+      where('department', '==', normalizeDepartment(userDepartment)),
       where('status', 'in', ['pending', 'approved', 'rejected', 'flagged'])
     );
 
@@ -129,6 +131,34 @@ export default function SubmissionsReview() {
     setIsDialogOpen(true);
     setFeedback('');
   };
+
+  useEffect(() => {
+    if (!selectedSubmission?.taskId || !isDialogOpen) {
+      setSubmissionFlags([]);
+      return;
+    }
+    
+    const q = query(
+      collection(db, 'flags'), 
+      where('taskId', '==', selectedSubmission.taskId)
+    );
+    
+    const unsubscribe = onSnapshot(q, (snap) => {
+       const flags = snap.docs.map(d => ({id: d.id, ...d.data()}));
+       flags.sort((a,b) => {
+         const tA = a.triggeredAt?.toDate?.() || new Date(0);
+         const tB = b.triggeredAt?.toDate?.() || new Date(0);
+         return tB - tA; // desc
+       });
+       setSubmissionFlags(flags);
+    }, (error) => {
+       console.error("Flags snapshot error:", error);
+    });
+    
+    return () => unsubscribe();
+  }, [selectedSubmission, isDialogOpen]);
+
+  const hasUnresolvedCriticalFlags = submissionFlags.some(f => f.severity === 'critical' && f.status !== 'resolved');
 
   const handleApprove = async () => {
     if (!selectedSubmission) return;
@@ -372,6 +402,84 @@ export default function SubmissionsReview() {
 
               <Separator />
 
+              {/* Time Summary */}
+              {selectedSubmission.taskInfo?.sectionTimes && (
+                <div className="bg-gray-50 border rounded-lg p-4 font-mono text-sm">
+                  <div className="flex items-center gap-2 font-bold mb-2 text-gray-700">
+                    <Clock className="w-4 h-4" />
+                    Time Summary
+                  </div>
+                  <div className="space-y-1 mb-2">
+                    {Object.entries(selectedSubmission.taskInfo.sectionTimes).map(([sectionId, seconds]) => (
+                      <div key={sectionId} className="flex justify-between text-gray-600">
+                        <span className="capitalize">{sectionId.replace(/-/g, ' ')}:</span>
+                        <span>{Math.floor(seconds / 60)}m {seconds % 60}s</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Separator className="my-2" />
+                  <div className="flex justify-between font-bold text-gray-900">
+                    <span>Total Checklist Time:</span>
+                    <span>
+                      {selectedSubmission.taskInfo.totalTimeSeconds ? 
+                        `${Math.floor(selectedSubmission.taskInfo.totalTimeSeconds / 60)}m ${selectedSubmission.taskInfo.totalTimeSeconds % 60}s` 
+                        : '--'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Flags Section */}
+              {submissionFlags.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-lg border-b pb-1">Flags & Alerts</h3>
+                  {hasUnresolvedCriticalFlags && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>Unresolved Critical Flags:</strong> This submission cannot be approved until all critical flags are resolved in the Manager Dashboard.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {submissionFlags.map(flag => (
+                    <div key={flag.id} className={`p-3 rounded-md border ${flag.severity === 'critical' ? 'bg-red-50 border-red-200' : flag.severity === 'warning' ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'}`}>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold">{flag.fieldLabel}</p>
+                          <p className="text-sm mt-1">{flag.message}</p>
+                        </div>
+                        <Badge variant={flag.status === 'resolved' ? 'secondary' : 'default'} className="uppercase text-xs">
+                          {flag.status}
+                        </Badge>
+                      </div>
+                      
+                      {/* Audit Trail inline */}
+                      <div className="mt-3 text-xs space-y-1 text-gray-600 border-t pt-2 border-black/10">
+                        <div><strong>Triggered:</strong> {flag.triggeredAt?.toDate()?.toLocaleString()}</div>
+                        {flag.acknowledgedAt && <div><strong>Acknowledged:</strong> {flag.acknowledgedAt.toDate().toLocaleString()} by {flag.acknowledgedByName}</div>}
+                        {flag.actionTakenAt && (
+                          <div>
+                            <strong>Action:</strong> {flag.actionType} - "{flag.actionNotes}" ({flag.actionTakenAt.toDate().toLocaleString()} by {flag.actionTakenByName})
+                          </div>
+                        )}
+                        {flag.resolvedAt && (
+                          <div>
+                            <strong>Resolved:</strong> "{flag.resolutionNotes}" ({flag.resolvedAt.toDate().toLocaleString()} by {flag.resolvedByName})
+                          </div>
+                        )}
+                        {flag.escalatedAt && (
+                          <div>
+                            <strong>Escalated:</strong> "{flag.escalationReason}" ({flag.escalatedAt.toDate().toLocaleString()} by {flag.escalatedByName})
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Separator />
+
               {/* Milling Process Details */}
               {selectedSubmission.checklistType === 'milling' && (
                 <div className="space-y-6">
@@ -508,8 +616,8 @@ export default function SubmissionsReview() {
                   <div className="flex space-x-3">
                     <Button
                       onClick={handleApprove}
-                      disabled={actionLoading}
-                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      disabled={actionLoading || hasUnresolvedCriticalFlags}
+                      className={`flex-1 ${hasUnresolvedCriticalFlags ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}
                     >
                       <CheckCircle2 className="w-4 h-4 mr-2" />
                       {actionLoading ? 'Approving...' : 'Approve'}

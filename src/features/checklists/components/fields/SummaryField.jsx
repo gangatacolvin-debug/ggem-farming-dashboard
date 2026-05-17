@@ -3,7 +3,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 
-export default function SummaryField({ field, checklistType }) {
+export default function SummaryField({ field, checklistType, checklistStartTime }) {
     const { control } = useFormContext();
 
     // Watch all relevant fields for calculation
@@ -64,10 +64,31 @@ export default function SummaryField({ field, checklistType }) {
     const aggTotalWeightTodayKg = useWatch({ control, name: 'total-weight-today-kg' });
     const aggIsFinalDay = useWatch({ control, name: 'is-final-day' });
 
+    // loading dispatch watches
+    // Loading Dispatch Specific Watches
+    const dispatchBagsLoaded = useWatch({ control, name: 'bags-loaded' });
+    const dispatchTotalWeight = useWatch({ control, name: 'total-weight' });
+    const dispatchDamagedBags = useWatch({ control, name: 'damaged-bags-count' });
+    const dispatchLoadingStart = useWatch({ control, name: 'loading-start-time' });
+    const dispatchLoadingEnd = useWatch({ control, name: 'loading-end-time' });
+    const dispatchDepartureTime = useWatch({ control, name: 'departure-time' });
+    const dispatchDestination = useWatch({ control, name: 'destination' });
+    const dispatchDriver = useWatch({ control, name: 'driver' });
+    const dispatchTruckReg = useWatch({ control, name: 'truck-reg' });
+    const dispatchGuardsGgem = useWatch({ control, name: 'guards-ggem' });
+    const dispatchGuardsG4s = useWatch({ control, name: 'guards-g4s' });
+
     // Helper to safely parse numbers
     const safeParse = (val) => {
         const num = parseFloat(val);
         return isNaN(num) ? 0 : num;
+    };
+
+    const parseTimeToMinutes = (timeStr) => {
+        if (!timeStr) return null;
+        const [h, m] = timeStr.split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return null;
+        return h * 60 + m;
     };
 
     if (checklistType === 'hub-collection-offloading') {
@@ -344,7 +365,7 @@ export default function SummaryField({ field, checklistType }) {
 
     if (checklistType === 'aggregation-weighing-recording') {
         const logs = useWatch({ control, name: 'farmer-weighing-logs' }) || [];
-        
+
         const farmersWeighed = logs.length;
         const totalWeight = logs.reduce((sum, row) => sum + safeParse(row.weightKg), 0);
         const totalGross = logs.reduce((sum, row) => sum + safeParse(row.grossAmount), 0);
@@ -458,6 +479,103 @@ export default function SummaryField({ field, checklistType }) {
                             <p className="text-xl font-bold text-blue-600">
                                 {aggIsFinalDay === 'yes' ? 'Yes - Close' : 'No - Continues'}
                             </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
+    //loading produce
+
+    if (checklistType === 'loading-produce-dispatch') {
+        const bags = safeParse(bagsLoaded);
+        const weight = safeParse(weightLoaded);
+        const damaged = safeParse(damagedBags);
+        const damageRate = bags > 0 ? ((damaged / bags) * 100).toFixed(1) : '0.0';
+
+        const loadStart = parseTimeToMinutes(dispatchLoadingStart);
+        const loadEnd = parseTimeToMinutes(dispatchLoadingEnd);
+        const loadingDurationMins = (loadStart !== null && loadEnd !== null && loadEnd > loadStart)
+            ? loadEnd - loadStart : null;
+        const bagsPerHour = (loadingDurationMins && bags > 0)
+            ? ((bags / loadingDurationMins) * 60).toFixed(1) : '—';
+
+        const totalGuards = safeParse(dispatchGuardsGgem) + safeParse(dispatchGuardsG4s);
+
+        // Checklist total time
+        const totalMins = checklistStartTime
+            ? Math.floor((Date.now() - checklistStartTime) / 60000) : null;
+        const totalTimeDisplay = totalMins !== null
+            ? `${Math.floor(totalMins / 60)}h ${totalMins % 60}m` : '—';
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b pb-2">Dispatch Summary & KPIs</h3>
+
+                {/* Trip Info */}
+                <div className="bg-slate-50 border rounded-lg p-4 text-sm text-slate-600 grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <span>🚛 <strong>Truck:</strong> {dispatchTruckReg || '—'}</span>
+                    <span>👤 <strong>Driver:</strong> {dispatchDriver || '—'}</span>
+                    <span>📍 <strong>Destination:</strong> {dispatchDestination || '—'}</span>
+                </div>
+
+                {/* KPI Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Bags Dispatched</Label>
+                            <p className="text-2xl font-bold text-primary">{bags}</p>
+                            <p className="text-xs text-slate-400">{(weight / 1000).toFixed(2)} tonnes</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Damage Rate</Label>
+                            <p className={`text-2xl font-bold ${damaged > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {damageRate}%
+                            </p>
+                            <p className="text-xs text-slate-400">{damaged} damaged bag{damaged !== 1 ? 's' : ''}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Loading Rate</Label>
+                            <p className="text-2xl font-bold text-blue-600">{bagsPerHour}</p>
+                            <p className="text-xs text-slate-400">bags / hour</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Loading Duration</Label>
+                            <p className="text-2xl font-bold text-slate-700">
+                                {loadingDurationMins !== null ? `${loadingDurationMins} mins` : '—'}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                                {dispatchLoadingStart || '—'} → {dispatchLoadingEnd || '—'}
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Departure Time</Label>
+                            <p className="text-2xl font-bold text-slate-700">{dispatchDepartureTime || '—'}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Security Deployed</Label>
+                            <p className="text-2xl font-bold text-slate-700">{totalGuards}</p>
+                            <p className="text-xs text-slate-400">
+                                GGEM: {safeParse(dispatchGuardsGgem)} / G4S: {safeParse(dispatchGuardsG4s)}
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50">
+                        <CardContent className="p-4">
+                            <Label className="text-xs text-slate-500 uppercase">Checklist Duration</Label>
+                            <p className="text-2xl font-bold text-slate-700">{totalTimeDisplay}</p>
+                            <p className="text-xs text-slate-400">Total time on task</p>
                         </CardContent>
                     </Card>
                 </div>

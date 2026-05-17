@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -7,35 +7,17 @@ import {
   where,
   onSnapshot,
   doc,
-  getDocs,
   updateDoc,
-  serverTimestamp
+  serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  LayoutDashboard,
-  Users,
-  Scale,
-  Warehouse,
-  ClipboardCheck,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Clock,
-  ArrowRight,
-  TrendingUp,
-  MapPin,
-  Lock,
-  Unlock,
-  Download
-} from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { ExportService } from '@/features/aggregation/lib/ExportService';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DropdownMenu,
@@ -44,8 +26,598 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { FileText, FileSpreadsheet } from 'lucide-react';
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { ExportService } from '@/features/aggregation/lib/ExportService';
+import AggregationSessionsPanel from '@/features/aggregation/components/AggregationSessionsPanel';
+import WeighingLogTable from '@/features/aggregation/components/WeighingLogTable';
+import {
+  LayoutDashboard,
+  Users,
+  Scale,
+  Warehouse,
+  ClipboardCheck,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  MapPin,
+  Lock,
+  Unlock,
+  Download,
+  FileText,
+  FileSpreadsheet,
+  Activity,
+  TrendingUp,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Clock,
+  Wifi,
+  Circle,
+  ListOrdered,
+  UserCheck,
+  PackageCheck,
+  ClipboardList,
+  ShieldCheck,
+  SunMedium,
+} from 'lucide-react';
+
+// â”€â”€â”€ Skeleton Components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function HubSkeleton() {
+  return (
+    <div className="space-y-6 pb-12 animate-pulse">
+      {/* Header skeleton */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-72" />
+          <Skeleton className="h-4 w-56" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-48 rounded-md" />
+          <Skeleton className="h-9 w-36 rounded-md" />
+        </div>
+      </div>
+
+      {/* Live indicator skeleton */}
+      <Skeleton className="h-10 w-full rounded-lg" />
+
+      {/* Status cards skeleton */}
+      <div className="flex gap-3 overflow-x-auto pb-1">
+        {[...Array(5)].map((_, i) => (
+          <Skeleton key={i} className="min-w-[130px] h-24 rounded-xl flex-shrink-0" />
+        ))}
+      </div>
+
+      {/* Main content skeleton */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-4">
+          <Skeleton className="h-64 w-full rounded-xl" />
+          <Skeleton className="h-72 w-full rounded-xl" />
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-48 w-full rounded-xl" />
+          <Skeleton className="h-40 w-full rounded-xl" />
+          <Skeleton className="h-36 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// â”€â”€â”€ Live Indicator Banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function LiveBanner({ sessionData, lastUpdated }) {
+  const isActive = sessionData?.status === 'active';
+
+  return (
+    <div
+      className={`flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm ${isActive
+          ? 'bg-green-50 border-green-200 text-green-800'
+          : 'bg-gray-50 border-gray-200 text-gray-600'
+        }`}
+    >
+      <div className="flex items-center gap-2.5">
+        {isActive ? (
+          <>
+            {/* Pulsing live dot */}
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+            </span>
+            <span className="font-semibold">Live Session</span>
+            <span className="text-green-600 opacity-70">Â·</span>
+            <span className="text-green-700 opacity-80">
+              Hub: {sessionData?.hub?.replaceAll('-', ' ') || 'â€”'}
+            </span>
+          </>
+        ) : (
+          <>
+            <Lock className="w-3.5 h-3.5" />
+            <span className="font-medium">Archived Session</span>
+            <span className="opacity-50">Â· Read-only</span>
+          </>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 text-xs opacity-60">
+        <RefreshCw className="w-3 h-3" />
+        <span>Updated {lastUpdated}</span>
+      </div>
+    </div>
+  );
+}
+
+// â”€â”€â”€ Status Cards (Checklist Pipeline) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const CHECKLIST_STEPS = [
+  { key: 'pre-aggregation-setup', label: 'Setup', icon: LayoutDashboard },
+  { key: 'aggregation-quality-control', label: 'Quality QC', icon: ClipboardCheck },
+  { key: 'aggregation-weighing-recording', label: 'Weighing', icon: Scale },
+  { key: 'aggregation-warehouse-receiving', label: 'Warehouse', icon: Warehouse },
+  { key: 'aggregation-end-of-day', label: 'End of Day', icon: CheckCircle2 },
+];
+
+function PipelineStep({ label, icon: Icon, submitted, submittedAt, isLast }) {
+  return (
+    <div className="flex items-center gap-0">
+      <div
+        className={`flex flex-col items-center min-w-[120px] px-3 py-3 rounded-xl border transition-all ${submitted
+            ? 'bg-green-50 border-green-200'
+            : 'bg-gray-50 border-gray-100'
+          }`}
+      >
+        <div
+          className={`w-8 h-8 rounded-full flex items-center justify-center mb-1.5 ${submitted ? 'bg-green-100' : 'bg-gray-100'
+            }`}
+        >
+          <Icon className={`w-4 h-4 ${submitted ? 'text-green-600' : 'text-gray-300'}`} />
+        </div>
+        <p
+          className={`text-[10px] font-bold uppercase tracking-wider text-center leading-tight ${submitted ? 'text-green-800' : 'text-gray-400'
+            }`}
+        >
+          {label}
+        </p>
+        {submitted && submittedAt ? (
+          <p className="text-[9px] text-green-600 mt-0.5 opacity-70">{submittedAt}</p>
+        ) : (
+          <Badge
+            variant="outline"
+            className={`text-[9px] mt-1 px-1.5 py-0 h-4 ${submitted ? 'border-green-300 text-green-700' : 'text-gray-300'
+              }`}
+          >
+            {submitted ? 'Done' : 'Pending'}
+          </Badge>
+        )}
+      </div>
+      {!isLast && (
+        <div className="flex items-center mx-1">
+          <ArrowRight className={`w-4 h-4 ${submitted ? 'text-green-400' : 'text-gray-200'}`} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// â”€â”€â”€ KPI Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function KPICard({ label, value, sub, color = 'default', icon: Icon }) {
+  const colors = {
+    default: 'bg-gray-50 border-gray-100',
+    green: 'bg-green-50 border-green-100',
+    blue: 'bg-blue-50 border-blue-100',
+    orange: 'bg-orange-50 border-orange-100',
+    red: 'bg-red-50 border-red-100',
+  };
+  const textColors = {
+    default: 'text-gray-900',
+    green: 'text-green-700',
+    blue: 'text-blue-700',
+    orange: 'text-orange-700',
+    red: 'text-red-700',
+  };
+
+  return (
+    <div className={`rounded-xl border p-4 ${colors[color]}`}>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">{label}</p>
+        {Icon && <Icon className={`w-4 h-4 opacity-50 ${textColors[color]}`} />}
+      </div>
+      <p className={`text-2xl font-bold ${textColors[color]}`}>{value}</p>
+      {sub && <p className="text-[11px] text-gray-400 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+// â”€â”€â”€ Discrepancy Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function DiscrepancyRow({ label, val1, val2, unit, tolerance = 0 }) {
+  const diff = Math.abs((val1 || 0) - (val2 || 0));
+  const isError = diff > tolerance;
+  const sign = (val1 || 0) > (val2 || 0) ? '+' : '-';
+
+  return (
+    <div
+      className={`flex items-center justify-between px-4 py-3 rounded-lg border ${isError ? 'bg-red-50 border-red-100' : 'bg-green-50/40 border-green-100'
+        }`}
+    >
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-semibold text-gray-800">{(val1 || 0).toLocaleString()}</span>
+          <span className="text-gray-300 text-xs">logged</span>
+          <span className="text-gray-200">|</span>
+          <span className="font-semibold text-gray-800">{(val2 || 0).toLocaleString()}</span>
+          <span className="text-gray-300 text-xs">received</span>
+        </div>
+        {isError ? (
+          <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] font-bold px-2">
+            <AlertTriangle className="w-2.5 h-2.5 mr-1" />
+            {sign}{diff} {unit}
+          </Badge>
+        ) : (
+          <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px] font-bold px-2">
+            <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
+            Matched
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// â”€â”€â”€ Team Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function TeamRow({ role, name, present }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+      <div>
+        <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide">{role}</p>
+        <p className="text-sm font-medium text-gray-800">{name || 'â€”'}</p>
+      </div>
+      {present ? (
+        <div className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+          <span className="text-xs font-medium text-green-700">Present</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+          <span className="text-xs text-gray-400">Absent</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// â”€â”€â”€ Session List Item â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function SessionListItem({ session, isSelected, onClick, formatTs }) {
+  const isActive = session.status === 'active';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left rounded-lg px-3 py-3 border transition-all flex items-center justify-between gap-3 ${isSelected
+          ? 'bg-primary/5 border-primary/30 ring-1 ring-primary/20'
+          : 'bg-white border-gray-100 hover:border-gray-200 hover:bg-gray-50/50'
+        }`}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+            }`}
+        />
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-900 text-sm truncate">
+            {session.hub?.replaceAll('-', ' ') || 'Hub'}
+          </p>
+          <p className="text-[11px] text-gray-400">
+            {session.sessionId} Â· {isActive ? `Opened ${formatTs(session.createdAt)}` : `Sealed ${formatTs(session.closedAt)}`}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <Badge
+          className={`text-[10px] px-2 py-0 h-5 ${isActive
+              ? 'bg-green-100 text-green-700 border-green-200'
+              : 'bg-gray-100 text-gray-500 border-gray-200'
+            }`}
+        >
+          {isActive ? 'Active' : 'Sealed'}
+        </Badge>
+        <ArrowRight className="w-3.5 h-3.5 text-gray-300" />
+      </div>
+    </button>
+  );
+}
+
+// â”€â”€â”€ Session Timeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const TIMELINE_STEPS = [
+  {
+    key: 'pre-aggregation-setup',
+    label: 'Session Opened',
+    description: (sub, sessionData) =>
+      sub
+        ? `Setup submitted by ${sub['hub-coordinator-name'] || 'coordinator'}. ${sub['expected-farmers'] || 0} farmers expected. Team confirmed on-site.`
+        : null,
+    icon: SunMedium,
+    color: 'blue',
+    tsField: 'submittedAt',
+  },
+  {
+    key: 'aggregation-quality-control',
+    label: 'Quality Control Completed',
+    description: (sub) =>
+      sub
+        ? `${sub['batches-rejected-count'] || 0} batches rejected, ${sub['batches-downgraded-count'] || 0} downgraded. ${sub['quality-exceptions-details'] ? `Note: "${sub['quality-exceptions-details']}"` : 'No exceptions reported.'}`
+        : null,
+    icon: ShieldCheck,
+    color: 'purple',
+    tsField: 'submittedAt',
+  },
+  {
+    key: 'aggregation-weighing-recording',
+    label: 'Weighing & Recording Done',
+    description: (sub) =>
+      sub
+        ? `${sub['total-farmers-weighed'] || 0} farmers weighed. Total: ${(sub['total-weight-kg'] || 0).toLocaleString()} kg worth MWK ${(sub['total-gross-amount'] || 0).toLocaleString()}.`
+        : null,
+    icon: Scale,
+    color: 'green',
+    tsField: 'submittedAt',
+  },
+  {
+    key: 'aggregation-warehouse-receiving',
+    label: 'Warehouse Receiving Confirmed',
+    description: (sub) =>
+      sub
+        ? `Warehouse received ${sub['total-bags-received'] || 0} bags (${(sub['total-weight-received-kg'] || 0).toLocaleString()} kg).`
+        : null,
+    icon: PackageCheck,
+    color: 'orange',
+    tsField: 'submittedAt',
+  },
+  {
+    key: 'aggregation-end-of-day',
+    label: 'End-of-Day Reconciliation',
+    description: (sub) =>
+      sub
+        ? `${sub['farmers-attended-today'] || 0} farmers reconciled. Session closed out.`
+        : null,
+    icon: ClipboardList,
+    color: 'teal',
+    tsField: 'submittedAt',
+  },
+];
+
+const STEP_COLORS = {
+  blue: { dot: 'bg-blue-500', ring: 'ring-blue-100', icon: 'text-blue-600', card: 'border-blue-100   bg-blue-50/40', badge: 'bg-blue-100 text-blue-700 border-blue-200' },
+  purple: { dot: 'bg-purple-500', ring: 'ring-purple-100', icon: 'text-purple-600', card: 'border-purple-100 bg-purple-50/40', badge: 'bg-purple-100 text-purple-700 border-purple-200' },
+  green: { dot: 'bg-green-500', ring: 'ring-green-100', icon: 'text-green-600', card: 'border-green-100  bg-green-50/40', badge: 'bg-green-100 text-green-700 border-green-200' },
+  orange: { dot: 'bg-orange-500', ring: 'ring-orange-100', icon: 'text-orange-600', card: 'border-orange-100 bg-orange-50/40', badge: 'bg-orange-100 text-orange-700 border-orange-200' },
+  teal: { dot: 'bg-teal-500', ring: 'ring-teal-100', icon: 'text-teal-600', card: 'border-teal-100   bg-teal-50/40', badge: 'bg-teal-100 text-teal-700 border-teal-200' },
+};
+
+function SessionTimeline({ submissions, sessionData, submissionsLoading, formatTs }) {
+  const getSub = (type) => submissions.find((s) => s.checklistType === type);
+
+  const getTimestamp = (sub, field) => {
+    if (!sub) return null;
+    return sub[field] || sub.createdAt || null;
+  };
+
+  const openedAt = sessionData?.createdAt;
+  const sealedAt = sessionData?.closedAt;
+
+  // Build enriched events list
+  const events = TIMELINE_STEPS.map((step) => {
+    const sub = getSub(step.key);
+    return {
+      ...step,
+      sub,
+      submitted: !!sub,
+      ts: getTimestamp(sub, step.tsField),
+      descriptionText: step.description(sub, sessionData),
+    };
+  });
+
+  // Duration calculation
+  const firstTs = events.find((e) => e.submitted)?.ts;
+  const lastTs = events.filter((e) => e.submitted).slice(-1)[0]?.ts;
+  const getDuration = (start, end) => {
+    try {
+      const s = start?.toDate ? start.toDate() : new Date(start);
+      const e = end?.toDate ? end.toDate() : new Date(end);
+      const diffMs = e - s;
+      if (isNaN(diffMs) || diffMs < 0) return null;
+      const h = Math.floor(diffMs / 3_600_000);
+      const m = Math.floor((diffMs % 3_600_000) / 60_000);
+      return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    } catch { return null; }
+  };
+
+  const totalDuration = firstTs && lastTs ? getDuration(firstTs, lastTs) : null;
+  const submittedCount = events.filter((e) => e.submitted).length;
+
+  if (submissionsLoading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="flex gap-4">
+            <div className="flex flex-col items-center">
+              <Skeleton className="w-8 h-8 rounded-full" />
+              {i < 4 && <Skeleton className="w-0.5 h-16 mt-1" />}
+            </div>
+            <div className="flex-1 pb-6 space-y-2">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-14 w-full rounded-lg" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-0">
+
+      {/* Summary bar */}
+      <div className="flex flex-wrap items-center gap-4 mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
+        <div className="flex items-center gap-2">
+          <ListOrdered className="w-4 h-4 text-gray-400" />
+          <span className="text-sm font-semibold text-gray-700">{submittedCount} / 5 events logged</span>
+        </div>
+        {openedAt && (
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Clock className="w-3.5 h-3.5 text-gray-300" />
+            <span>Started {formatTs(openedAt)}</span>
+          </div>
+        )}
+        {totalDuration && (
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Activity className="w-3.5 h-3.5 text-gray-300" />
+            <span>Operations spanned <span className="font-semibold text-gray-700">{totalDuration}</span></span>
+          </div>
+        )}
+        {sealedAt && (
+          <Badge className="bg-gray-100 text-gray-600 border-gray-200 text-[11px] ml-auto">
+            <Lock className="w-2.5 h-2.5 mr-1" /> Sealed {formatTs(sealedAt)}
+          </Badge>
+        )}
+      </div>
+
+      {/* Timeline items */}
+      <div className="relative">
+        {events.map((event, i) => {
+          const colors = STEP_COLORS[event.color];
+          const isLast = i === events.length - 1;
+          const Icon = event.icon;
+
+          return (
+            <div key={event.key} className="flex gap-4">
+
+              {/* Dot + line */}
+              <div className="flex flex-col items-center flex-shrink-0">
+                <div
+                  className={`w-9 h-9 rounded-full flex items-center justify-center ring-4 z-10 flex-shrink-0 ${event.submitted
+                      ? `${colors.dot} ${colors.ring}`
+                      : 'bg-gray-100 ring-gray-50'
+                    }`}
+                >
+                  <Icon className={`w-4 h-4 ${event.submitted ? 'text-white' : 'text-gray-300'}`} />
+                </div>
+                {!isLast && (
+                  <div
+                    className={`w-0.5 flex-1 my-1 min-h-[2rem] ${event.submitted ? 'bg-gray-200' : 'bg-gray-100 border-dashed'
+                      }`}
+                  />
+                )}
+              </div>
+
+              {/* Content */}
+              <div className={`flex-1 ${!isLast ? 'pb-5' : 'pb-1'}`}>
+                <div className="flex items-center gap-2 mb-1.5 min-h-[36px]">
+                  <p
+                    className={`text-sm font-semibold ${event.submitted ? 'text-gray-900' : 'text-gray-400'
+                      }`}
+                  >
+                    {event.label}
+                  </p>
+                  {event.submitted ? (
+                    <Badge className={`text-[10px] px-2 h-5 font-medium ${colors.badge}`}>
+                      <CheckCircle2 className="w-2.5 h-2.5 mr-1" /> Completed
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] px-2 h-5 text-gray-400 border-gray-200">
+                      Pending
+                    </Badge>
+                  )}
+                  {event.ts && (
+                    <span className="text-[11px] text-gray-400 ml-auto flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {formatTs(event.ts)}
+                    </span>
+                  )}
+                </div>
+
+                {event.submitted && event.descriptionText && (
+                  <div className={`rounded-lg border px-4 py-3 text-sm text-gray-600 leading-relaxed ${colors.card}`}>
+                    {event.descriptionText}
+
+                    {/* Extra detail rows per step */}
+                    {event.key === 'aggregation-weighing-recording' && event.sub?.['farmer-weighing-logs']?.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-200/60 grid grid-cols-3 gap-2">
+                        {[
+                          { label: 'Bags', value: event.sub['total-bags-weighed'] || 0 },
+                          { label: 'Farmers', value: event.sub['total-farmers-weighed'] || 0 },
+                          { label: 'Avg/kg', value: `MWK ${event.sub['total-weight-kg'] ? ((event.sub['total-gross-amount'] || 0) / event.sub['total-weight-kg']).toFixed(0) : 0}` },
+                        ].map((stat) => (
+                          <div key={stat.label} className="text-center">
+                            <p className="text-xs font-bold text-gray-800">{stat.value}</p>
+                            <p className="text-[10px] text-gray-400">{stat.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {event.key === 'pre-aggregation-setup' && event.sub && (
+                      <div className="mt-2 pt-2 border-t border-gray-200/60 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
+                        {event.sub['hub-coordinator-present'] && <span className="flex items-center gap-1"><UserCheck className="w-3 h-3 text-blue-400" /> Coordinator present</span>}
+                        {event.sub['security-team-present'] && <span className="flex items-center gap-1"><UserCheck className="w-3 h-3 text-blue-400" /> Security present</span>}
+                        {event.sub['warehouse-team-present'] && <span className="flex items-center gap-1"><UserCheck className="w-3 h-3 text-blue-400" /> Warehouse present</span>}
+                        {event.sub['data-team-present'] && <span className="flex items-center gap-1"><UserCheck className="w-3 h-3 text-blue-400" /> Data team present</span>}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!event.submitted && (
+                  <div className="rounded-lg border border-dashed border-gray-200 px-4 py-3 text-sm text-gray-400 italic">
+                    Not yet submitted
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Sealed event at bottom */}
+        {sealedAt && (
+          <div className="flex gap-4 mt-0">
+            <div className="flex flex-col items-center flex-shrink-0">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center ring-4 bg-gray-700 ring-gray-100 z-10">
+                <Lock className="w-4 h-4 text-white" />
+              </div>
+            </div>
+            <div className="flex-1 pb-1">
+              <div className="flex items-center gap-2 mb-1.5 min-h-[36px]">
+                <p className="text-sm font-semibold text-gray-900">Session Sealed & Archived</p>
+                <Badge className="bg-gray-100 text-gray-700 border-gray-300 text-[10px] px-2 h-5">
+                  <Lock className="w-2.5 h-2.5 mr-1" /> Final
+                </Badge>
+                <span className="text-[11px] text-gray-400 ml-auto flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {formatTs(sealedAt)}
+                </span>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                All records locked. Session is read-only.{' '}
+                {totalDuration && (
+                  <span>Total operation time: <strong>{totalDuration}</strong>.</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function AggregationSessionHub() {
   const { userDepartment } = useAuth();
@@ -54,10 +626,12 @@ export default function AggregationSessionHub() {
   const [sessionData, setSessionData] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
+  const [lastUpdated, setLastUpdated] = useState('just now');
 
-  // 1. Fetch active/recent sessions
+  // â”€â”€ 1. Sessions â€” real-time listener â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (userDepartment !== 'aggregation') return;
 
@@ -67,77 +641,104 @@ export default function AggregationSessionHub() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const sessionList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })).sort((a, b) => (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0));
-      
-      setSessions(sessionList);
-      if (sessionList.length > 0 && !selectedSessionId) {
-        setSelectedSessionId(sessionList[0].sessionId);
+      const list = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0));
+
+      setSessions(list);
+      if (list.length > 0 && !selectedSessionId) {
+        setSelectedSessionId(list[0].sessionId);
       }
       setLoading(false);
+      setLastUpdated('just now');
     });
 
     return () => unsubscribe();
   }, [userDepartment]);
 
-  // 2. Fetch all data for the selected session
+  // â”€â”€ 2. Submissions â€” real-time listener for selected session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!selectedSessionId) return;
 
-    // Find session document
-    const currentSession = sessions.find(s => s.sessionId === selectedSessionId);
-    setSessionData(currentSession);
+    const current = sessions.find((s) => s.sessionId === selectedSessionId);
+    setSessionData(current || null);
+    setSubmissionsLoading(true);
 
-    // Query all submissions for this session
-    const submissionsQuery = query(
-      collection(db, 'submissions'),
-      where('session-id-ref', '==', selectedSessionId)
-    );
+    // Listen to both field names (until migration is done)
+    const q1 = query(collection(db, 'submissions'), where('session-id-ref', '==', selectedSessionId));
+    const q2 = query(collection(db, 'submissions'), where('session-id', '==', selectedSessionId));
 
-    // Also check for the initial setup which uses 'session-id'
-    const setupQuery = query(
-      collection(db, 'submissions'),
-      where('session-id', '==', selectedSessionId)
-    );
+    let snap1Docs = [];
+    let snap2Docs = [];
 
-    const fetchData = async () => {
-      const [snap1, snap2] = await Promise.all([getDocs(submissionsQuery), getDocs(setupQuery)]);
-      const allSubmissions = [
-        ...snap1.docs.map(d => ({ id: d.id, ...d.data() })),
-        ...snap2.docs.map(d => ({ id: d.id, ...d.data() }))
+    const merge = () => {
+      const all = [
+        ...snap1Docs.map((d) => ({ id: d.id, ...d.data() })),
+        ...snap2Docs.map((d) => ({ id: d.id, ...d.data() })),
       ];
-      
-      // De-duplicate if necessary
-      const uniqueSubmissions = Array.from(new Map(allSubmissions.map(s => [s.id, s])).values());
-      setSubmissions(uniqueSubmissions);
+      const unique = Array.from(new Map(all.map((s) => [s.id, s])).values());
+      setSubmissions(unique);
+      setSubmissionsLoading(false);
+      setLastUpdated('just now');
     };
 
-    fetchData();
-  }, [selectedSessionId, sessions, submissions.length]); // Balanced dependency
+    const unsub1 = onSnapshot(q1, (snap) => { snap1Docs = snap.docs; merge(); });
+    const unsub2 = onSnapshot(q2, (snap) => { snap2Docs = snap.docs; merge(); });
 
-  const handleSealSession = async () => {
-    if (!sessionData?.id) return;
+    return () => { unsub1(); unsub2(); };
+  }, [selectedSessionId, sessions]);
 
+  // â”€â”€ 3. "Last updated" ticker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLastUpdated((prev) => {
+        if (prev === 'just now') return '1 min ago';
+        const match = prev.match(/(\d+) min ago/);
+        if (match) return `${parseInt(match[1]) + 1} min ago`;
+        return prev;
+      });
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const formatTs = (t) => {
+    if (!t) return 'â€”';
+    try {
+      const d = t?.toDate ? t.toDate() : new Date(t);
+      return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    } catch { return 'â€”'; }
+  };
+
+  const formatShortTime = (t) => {
+    if (!t) return null;
+    try {
+      const d = t?.toDate ? t.toDate() : new Date(t);
+      return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    } catch { return null; }
+  };
+
+  const getSub = (type) => submissions.find((s) => s.checklistType === type);
+
+  // â”€â”€ Seal handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const handleSealSession = async (sessionArg) => {
+    const target = sessionArg || sessionData;
+    if (!target?.id) return;
     toast.warning('Seal This Session?', {
-      description: "This will make all records read-only and freeze today's logs. This cannot be undone.",
+      description: 'All records will become read-only. This cannot be undone.',
       action: {
         label: 'Seal Session',
         onClick: async () => {
           setActionLoading(true);
           try {
-            await updateDoc(doc(db, 'aggregationSessions', sessionData.id), {
+            await updateDoc(doc(db, 'aggregationSessions', target.id), {
               status: 'closed',
               closedAt: serverTimestamp(),
-              closedBy: 'Manager'
+              closedBy: 'Manager',
             });
-            toast.success('Session Sealed ✓', {
-              description: 'All records are now read-only.',
-              duration: 5000,
-            });
-          } catch (error) {
-            console.error("Error sealing session:", error);
+            toast.success('Session Sealed âœ“', { description: 'All records are now read-only.', duration: 5000 });
+          } catch (err) {
+            console.error(err);
             toast.error('Seal Failed', { description: 'Could not seal session. Please try again.' });
           } finally {
             setActionLoading(false);
@@ -148,10 +749,7 @@ export default function AggregationSessionHub() {
     });
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-500">Loading Session Hub...</div>;
-
-  const getSub = (type) => submissions.find(s => s.checklistType === type);
-
+  // â”€â”€ Derived data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const setup = getSub('pre-aggregation-setup');
   const qc = getSub('aggregation-quality-control');
   const weighing = getSub('aggregation-weighing-recording');
@@ -160,430 +758,482 @@ export default function AggregationSessionHub() {
 
   const activeSessions = sessions.filter((s) => s.status === 'active');
   const sealedSessions = sessions.filter((s) => s.status === 'closed');
+  const submittedCount = [setup, qc, weighing, warehouse, eod].filter(Boolean).length;
+  const progressPct = (submittedCount / 5) * 100;
 
-  const formatTs = (t) => {
-    if (!t) return '—';
-    if (t?.toDate) return t.toDate().toLocaleString();
-    try {
-      return new Date(t).toLocaleString();
-    } catch {
-      return '—';
-    }
-  };
+  const totalWeight = weighing?.['total-weight-kg'] || 0;
+  const totalValue = weighing?.['total-gross-amount'] || 0;
+  const totalFarmers = weighing?.['total-farmers-weighed'] || 0;
+  const expectedFarmers = setup?.['expected-farmers'] || 0;
+  const avgRate = totalWeight > 0 ? (totalValue / totalWeight).toFixed(1) : '0';
+  const warehouseWeight = warehouse?.['total-weight-received-kg'] || 0;
 
-  const statusBadge = (status) => {
-    if (status === 'active') {
-      return (
-        <Badge className="bg-green-100 text-green-700 border-green-200">
-          <Unlock className="w-3 h-3 mr-1" /> Active
-        </Badge>
-      );
-    }
-    if (status === 'closed') {
-      return (
-        <Badge variant="secondary" className="bg-gray-100 text-gray-700 border-gray-200">
-          <Lock className="w-3 h-3 mr-1" /> Sealed
-        </Badge>
-      );
-    }
-    return <Badge variant="outline">{status || 'unknown'}</Badge>;
-  };
-
-  const handlePickSession = (sessionId) => {
-    setSelectedSessionId(sessionId);
-    setActiveTab('details');
-  };
+  if (loading) return <HubSkeleton />;
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-5 pb-12">
+
+      {/* â”€â”€ Header â”€â”€ */}
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Aggregation Session Hub</h1>
-          <p className="text-gray-500 mt-1">Unified monitoring and control for market day operations</p>
+          <div className="flex items-center gap-2 mb-0.5">
+            <Activity className="w-5 h-5 text-primary" />
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+              Aggregation Session Hub
+            </h1>
+          </div>
+          <p className="text-sm text-gray-500 ml-7">
+            Unified monitoring and control for market day operations
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <select 
-            className="bg-white border rounded-md px-3 py-2 text-sm font-medium"
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Session picker */}
+          <select
+            className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-w-[220px]"
             value={selectedSessionId || ''}
-            onChange={(e) => setSelectedSessionId(e.target.value)}
+            onChange={(e) => { setSelectedSessionId(e.target.value); setActiveTab('details'); }}
           >
-            {sessions.map(s => (
+            {sessions.map((s) => (
               <option key={s.id} value={s.sessionId}>
-                {s.hub?.replace('-', ' ')} - {s.sessionId} ({s.status})
+                {s.hub?.replaceAll('-', ' ')} Â· {s.sessionId} ({s.status})
               </option>
             ))}
           </select>
-          
+
+          {/* Export */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="flex items-center gap-2">
-                <Download className="w-4 h-4" />
-                <span>Export Report</span>
+              <Button variant="outline" size="sm" className="gap-2 shadow-sm">
+                <Download className="w-3.5 h-3.5" />
+                Export
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuLabel>Choose Format</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                className="cursor-pointer"
+              <DropdownMenuItem
+                className="cursor-pointer gap-2"
                 onClick={() => ExportService.generateSessionPDF(sessionData, submissions)}
               >
-                <FileText className="w-4 h-4 mr-2 text-red-500" />
-                <span>Professional PDF</span>
+                <FileText className="w-4 h-4 text-red-500" /> PDF Report
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                className="cursor-pointer"
+              <DropdownMenuItem
+                className="cursor-pointer gap-2"
                 onClick={() => ExportService.generateSessionExcel(sessionData, submissions)}
               >
-                <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />
-                <span>Excel Spreadsheet</span>
+                <FileSpreadsheet className="w-4 h-4 text-green-600" /> Excel Spreadsheet
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Seal button (shortcut) */}
+          {sessionData?.status === 'active' && (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="gap-2 shadow-sm"
+              onClick={handleSealSession}
+              disabled={actionLoading}
+            >
+              <Lock className="w-3.5 h-3.5" />
+              {actionLoading ? 'Sealingâ€¦' : 'Seal Session'}
+            </Button>
+          )}
         </div>
       </div>
 
+      <AggregationSessionsPanel
+        sessions={sessions}
+        days={90}
+        allowSeal
+        onSeal={handleSealSession}
+      />
+
+      {/* â”€â”€ Live Banner â”€â”€ */}
+      {sessionData && <LiveBanner sessionData={sessionData} lastUpdated={lastUpdated} />}
+
+      {/* â”€â”€ Tabs â”€â”€ */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 lg:w-[420px]">
-          <TabsTrigger value="details">Session Detail</TabsTrigger>
-          <TabsTrigger value="sessions">Sessions</TabsTrigger>
+        <TabsList className="grid grid-cols-2 w-full lg:w-[360px]">
+          <TabsTrigger value="details" className="gap-1.5">
+            <Activity className="w-3.5 h-3.5" /> Session Detail
+          </TabsTrigger>
+          <TabsTrigger value="timeline" className="gap-1.5">
+            <ListOrdered className="w-3.5 h-3.5" /> Timeline
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="sessions" className="mt-6 space-y-6">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base">Active Sessions</CardTitle>
-              <CardDescription>Current market-day sessions that are still open.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {activeSessions.length === 0 ? (
-                  <p className="text-sm text-gray-500">No active sessions.</p>
-                ) : (
-                  activeSessions.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => handlePickSession(s.sessionId)}
-                      className="w-full text-left border rounded-md px-3 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-semibold text-gray-900 truncate">
-                          {s.hub?.replaceAll?.('-', ' ') || s.hub || 'Hub'} · {s.sessionId}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Opened: {formatTs(s.createdAt)}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {statusBadge(s.status)}
-                        <ArrowRight className="w-4 h-4 text-gray-400" />
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base">Sealed / Submitted Sessions</CardTitle>
-              <CardDescription>Archived sessions (sealed) that you can review in full detail.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {sealedSessions.length === 0 ? (
-                  <p className="text-sm text-gray-500">No sealed sessions yet.</p>
-                ) : (
-                  sealedSessions.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => handlePickSession(s.sessionId)}
-                      className="w-full text-left border rounded-md px-3 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-semibold text-gray-900 truncate">
-                          {s.hub?.replaceAll?.('-', ' ') || s.hub || 'Hub'} · {s.sessionId}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Sealed: {formatTs(s.closedAt)}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {statusBadge(s.status)}
-                        <ArrowRight className="w-4 h-4 text-gray-400" />
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="details" className="mt-6">
+        {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• TIMELINE TAB â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        <TabsContent value="timeline" className="mt-5">
           {!sessionData ? (
             <Alert>
               <AlertDescription>
-                No sessions found. Start a session from the Supervisor dashboard (Pre-Aggregation Setup submit).
+                No session selected. Pick a session to view its timeline.
               </AlertDescription>
             </Alert>
           ) : (
-            <>
-              {/* Quick Status Bar */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <StatusCard title="Setup" sub={setup} icon={LayoutDashboard} />
-                <StatusCard title="Quality Control" sub={qc} icon={ClipboardCheck} />
-                <StatusCard title="Weighing" sub={weighing} icon={Scale} />
-                <StatusCard title="Warehouse" sub={warehouse} icon={Warehouse} />
-                <StatusCard title="Reconciliation" sub={eod} icon={CheckCircle2} />
-              </div>
+            <Card className="shadow-sm border-gray-100">
+              <CardHeader className="pb-3 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold">Session Event Timeline</CardTitle>
+                    <CardDescription className="text-xs mt-0.5">
+                      A chronological record of everything that happened during this market day
+                    </CardDescription>
+                  </div>
+                  <Badge
+                    className={`text-[10px] px-2 ${sessionData.status === 'active'
+                        ? 'bg-green-100 text-green-700 border-green-200'
+                        : 'bg-gray-100 text-gray-500 border-gray-200'
+                      }`}
+                  >
+                    {sessionData.hub?.replaceAll('-', ' ')} Â· {sessionData.sessionId}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-5">
+                <SessionTimeline
+                  submissions={submissions}
+                  sessionData={sessionData}
+                  submissionsLoading={submissionsLoading}
+                  formatTs={formatTs}
+                />
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-                {/* Left Column: Key Performance Metrics */}
-                <div className="lg:col-span-2 space-y-6">
-                  {/* Session Overview Card */}
-                  <Card className="shadow-sm overflow-hidden border-t-4 border-t-primary">
-                    <CardHeader className="bg-gray-50/50">
-                      <div className="flex justify-between items-center">
+        {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• DETAILS TAB â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        <TabsContent value="details" className="mt-5">
+          {!sessionData ? (
+            <Alert>
+              <AlertDescription>
+                No session selected. Start a session from the Supervisor dashboard (Pre-Aggregation Setup).
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <div className="space-y-5">
+
+              {/* â”€â”€ Checklist Pipeline â”€â”€ */}
+              <Card className="shadow-sm border-gray-100 overflow-hidden">
+                <CardHeader className="pb-3 bg-gray-50/50 border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-sm font-semibold">Checklist Pipeline</CardTitle>
+                      <CardDescription className="text-xs mt-0.5">
+                        {submittedCount} of 5 checklists submitted
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Progress value={progressPct} className="w-24 h-1.5" />
+                      <span className="text-xs font-semibold text-gray-500">{Math.round(progressPct)}%</span>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="py-4">
+                  {submissionsLoading ? (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Skeleton key={i} className="min-w-[120px] h-24 rounded-xl flex-shrink-0" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex gap-0 overflow-x-auto pb-1">
+                      {CHECKLIST_STEPS.map((step, i) => {
+                        const sub = getSub(step.key);
+                        return (
+                          <PipelineStep
+                            key={step.key}
+                            label={step.label}
+                            icon={step.icon}
+                            submitted={!!sub}
+                            submittedAt={formatShortTime(sub?.submittedAt || sub?.createdAt)}
+                            isLast={i === CHECKLIST_STEPS.length - 1}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* â”€â”€ KPI Row â”€â”€ */}
+              {submissionsLoading ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <KPICard
+                    label="Farmers Weighed"
+                    value={totalFarmers}
+                    sub={expectedFarmers ? `of ${expectedFarmers} expected` : 'No target set'}
+                    color={expectedFarmers && totalFarmers >= expectedFarmers ? 'green' : 'default'}
+                    icon={Users}
+                  />
+                  <KPICard
+                    label="Total Tonnage"
+                    value={`${(totalWeight / 1000).toFixed(2)} t`}
+                    sub={`${totalWeight.toLocaleString()} kg total`}
+                    color="green"
+                    icon={Scale}
+                  />
+                  <KPICard
+                    label="Total Value"
+                    value={`MWK ${(totalValue / 1_000_000).toFixed(2)}M`}
+                    sub={`Avg MWK ${avgRate}/kg`}
+                    color="blue"
+                    icon={TrendingUp}
+                  />
+                  <KPICard
+                    label="QC Rejections"
+                    value={qc?.['batches-rejected-count'] || 0}
+                    sub={`${qc?.['batches-downgraded-count'] || 0} downgraded`}
+                    color={(qc?.['batches-rejected-count'] || 0) > 0 ? 'red' : 'default'}
+                    icon={AlertTriangle}
+                  />
+                </div>
+              )}
+
+              {/* â”€â”€ Main 2-col layout â”€â”€ */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+                {/* Left: Audit + Weighing Table */}
+                <div className="lg:col-span-2 space-y-5">
+
+                  {/* Data Reconciliation */}
+                  <Card className="shadow-sm border-gray-100">
+                    <CardHeader className="pb-3 border-b border-gray-100">
+                      <div className="flex items-center justify-between">
                         <div>
-                          <CardTitle>Master Performance Audit</CardTitle>
-                          <CardDescription>Comparison of logs across different stations</CardDescription>
+                          <CardTitle className="text-sm font-semibold">Data Reconciliation Audit</CardTitle>
+                          <CardDescription className="text-xs mt-0.5">
+                            Cross-check between weighing station and warehouse
+                          </CardDescription>
                         </div>
-                        {sessionData.status === 'active' ? (
-                          <Badge className="bg-green-100 text-green-700 border-green-200">
-                            <Unlock className="w-3 h-3 mr-1" /> Active Session
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="bg-gray-100 text-gray-700 border-gray-200">
-                            <Lock className="w-3 h-3 mr-1" /> Archived & Sealed
-                          </Badge>
-                        )}
+                        <Badge
+                          className={`text-[10px] px-2 ${sessionData.status === 'active'
+                              ? 'bg-green-100 text-green-700 border-green-200'
+                              : 'bg-gray-100 text-gray-500 border-gray-200'
+                            }`}
+                        >
+                          {sessionData.status === 'active' ? (
+                            <><Unlock className="w-2.5 h-2.5 mr-1" /> Active</>
+                          ) : (
+                            <><Lock className="w-2.5 h-2.5 mr-1" /> Sealed</>
+                          )}
+                        </Badge>
                       </div>
                     </CardHeader>
-                    <CardContent className="pt-6">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div className="space-y-1">
-                          <p className="text-xs text-gray-500 uppercase font-semibold">Farmers</p>
-                          <div className="flex items-end gap-2">
-                            <span className="text-2xl font-bold">{weighing?.['total-farmers-weighed'] || 0}</span>
-                            <span className="text-gray-400 text-sm mb-1">/ {setup?.['expected-farmers'] || '--'} expected</span>
-                          </div>
-                          <Progress value={(weighing?.['total-farmers-weighed'] / setup?.['expected-farmers']) * 100 || 0} className="h-1.5" />
+                    <CardContent className="pt-4 space-y-2.5">
+                      {submissionsLoading ? (
+                        <div className="space-y-2">
+                          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
                         </div>
-                        <div className="space-y-1">
-                          <p className="text-xs text-gray-500 uppercase font-semibold">Total Tonnage</p>
-                          <div className="flex items-end gap-2">
-                            <span className="text-2xl font-bold text-green-600">{(weighing?.['total-weight-kg'] || 0).toLocaleString()} kg</span>
-                          </div>
-                          <p className="text-[10px] text-gray-400">Verified by Warehouse: {warehouse?.['total-weight-received-kg'] || 0} kg</p>
+                      ) : (
+                        <>
+                          <DiscrepancyRow
+                            label="Bags â€” Logged vs Received"
+                            val1={weighing?.['total-bags-weighed'] || 0}
+                            val2={warehouse?.['total-bags-received'] || 0}
+                            unit="bags"
+                          />
+                          <DiscrepancyRow
+                            label="Weight â€” Logged vs Received"
+                            val1={totalWeight}
+                            val2={warehouseWeight}
+                            unit="kg"
+                            tolerance={5}
+                          />
+                          <DiscrepancyRow
+                            label="Farmers â€” Weighed vs Reconciled"
+                            val1={totalFarmers}
+                            val2={eod?.['farmers-attended-today'] || 0}
+                            unit="farmers"
+                          />
+                        </>
+                      )}
+
+                      {/* Warehouse weight summary line */}
+                      {!submissionsLoading && warehouseWeight > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between text-xs text-gray-500">
+                          <span>Warehouse confirmed receipt:</span>
+                          <span className="font-semibold text-gray-800">{warehouseWeight.toLocaleString()} kg</span>
                         </div>
-                        <div className="space-y-1">
-                          <p className="text-xs text-gray-500 uppercase font-semibold">Total Value</p>
-                          <div className="flex items-end gap-2">
-                            <span className="text-2xl font-bold text-blue-600">MWK {(weighing?.['total-gross-amount'] || 0).toLocaleString()}</span>
-                          </div>
-                          <p className="text-[10px] text-gray-400">Avg MWK/kg: {weighing?.['total-weight-kg'] ? (weighing['total-gross-amount'] / weighing['total-weight-kg']).toFixed(1) : 0}</p>
-                        </div>
-                      </div>
-
-                      <Separator className="my-6" />
-
-                      <h4 className="font-semibold text-sm mb-4 flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-orange-500" />
-                        Data Reconciliation Check
-                      </h4>
-
-                      <div className="space-y-3">
-                        <DiscrepancyRow
-                          label="Bags Logged vs Received"
-                          val1={weighing?.['total-bags-weighed'] || 0}
-                          val2={warehouse?.['total-bags-received'] || 0}
-                          unit="Bags"
-                        />
-                        <DiscrepancyRow
-                          label="Weight Logged vs Received"
-                          val1={weighing?.['total-weight-kg'] || 0}
-                          val2={warehouse?.['total-weight-received-kg'] || 0}
-                          unit="kg"
-                          tolerance={5} // Allow 5kg variance
-                        />
-                        <DiscrepancyRow
-                          label="Farmers Weighed vs Reconciled"
-                          val1={weighing?.['total-farmers-weighed'] || 0}
-                          val2={eod?.['farmers-attended-today'] || 0}
-                          unit="People"
-                        />
-                      </div>
+                      )}
                     </CardContent>
                   </Card>
 
-                  {/* Farmer Weighing Log (Merged View Placeholder) */}
-                  <Card className="shadow-sm">
-                    <CardHeader>
-                      <CardTitle className="text-base">Session Weighing Log</CardTitle>
-                      <CardDescription>Detailed transaction leaf for this session</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto rounded border">
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-50 border-b">
-                            <tr>
-                              <th className="px-3 py-2 text-left font-semibold">Farmer</th>
-                              <th className="px-3 py-2 text-left font-semibold">Club</th>
-                              <th className="px-3 py-2 text-left font-semibold">Quality</th>
-                              <th className="px-3 py-2 text-right font-semibold">Weight</th>
-                              <th className="px-3 py-2 text-right font-semibold">Value (MWK)</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y">
-                            {weighing?.['farmer-weighing-logs']?.map((log, i) => (
-                              <tr key={i} className="hover:bg-gray-50/50">
-                                <td className="px-3 py-2 font-medium">{log.farmerName}</td>
-                                <td className="px-3 py-2 text-gray-500">{log.clubGroupName}</td>
-                                <td className="px-3 py-2">
-                                  <Badge variant="outline" className="text-[10px]">{log.variety} - {log.grade}</Badge>
-                                </td>
-                                <td className="px-3 py-2 text-right font-medium">{log.weightKg} kg</td>
-                                <td className="px-3 py-2 text-right font-bold text-blue-600">{Number(log.grossAmount).toLocaleString()}</td>
-                              </tr>
-                            )) || (
-                              <tr><td colSpan="5" className="px-3 py-8 text-center text-gray-400 italic">No weighing logs found for this session yet.</td></tr>
-                            )}
-                          </tbody>
-                        </table>
+                  {/* Weighing Log */}
+                  <Card className="shadow-sm border-gray-100">
+                    <CardHeader className="pb-3 border-b border-gray-100">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-sm font-semibold">Farmer Weighing Log</CardTitle>
+                          <CardDescription className="text-xs mt-0.5">
+                            {weighing?.['farmer-weighing-logs']?.length || 0} transactions recorded
+                          </CardDescription>
+                        </div>
+                        <MapPin className="w-3.5 h-3.5 text-gray-300" />
                       </div>
+                    </CardHeader>
+                    <CardContent className="pt-4">
+                      {submissionsLoading ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-8 w-full rounded-lg" />
+                          <Skeleton className="h-48 w-full rounded-lg" />
+                        </div>
+                      ) : (
+                        <WeighingLogTable
+                          logs={weighing?.['farmer-weighing-logs'] || weighing?.farmerWeighingLogs || []}
+                          sessionData={sessionData}
+                          showExport
+                          defaultPageSize={50}
+                        />
+                      )}
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Right Column: Session Management */}
-                <div className="space-y-6">
-                  {/* Team Card */}
-                  <Card className="shadow-sm">
-                    <CardHeader><CardTitle className="text-base">On-Site Team</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                      <TeamRow role="Coordinator" name={setup?.['hub-coordinator-name']} present={setup?.['hub-coordinator-present']} />
-                      <TeamRow role="Security Lead" name={setup?.['security-lead-name']} present={setup?.['security-team-present']} />
-                      <TeamRow role="Warehouse Lead" name={setup?.['warehouse-supervisor-name']} present={setup?.['warehouse-team-present']} />
-                      <TeamRow role="Data Lead" name={setup?.['data-team-representative-name']} present={setup?.['data-team-present']} />
+                {/* Right: Team + QC + Seal */}
+                <div className="space-y-5">
+
+                  {/* On-Site Team */}
+                  <Card className="shadow-sm border-gray-100">
+                    <CardHeader className="pb-3 border-b border-gray-100">
+                      <CardTitle className="text-sm font-semibold">On-Site Team</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-3">
+                      {submissionsLoading ? (
+                        <div className="space-y-3">
+                          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 rounded" />)}
+                        </div>
+                      ) : (
+                        <>
+                          <TeamRow role="Hub Coordinator" name={setup?.['hub-coordinator-name']} present={setup?.['hub-coordinator-present']} />
+                          <TeamRow role="Security Lead" name={setup?.['security-lead-name']} present={setup?.['security-team-present']} />
+                          <TeamRow role="Warehouse Lead" name={setup?.['warehouse-supervisor-name']} present={setup?.['warehouse-team-present']} />
+                          <TeamRow role="Data Lead" name={setup?.['data-team-representative-name']} present={setup?.['data-team-present']} />
+                        </>
+                      )}
                     </CardContent>
                   </Card>
 
-                  {/* QC Breakdown */}
-                  <Card className="shadow-sm">
-                    <CardHeader><CardTitle className="text-base">Quality Summary</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex justify-between items-center bg-red-50 p-3 rounded border border-red-100">
-                        <span className="text-sm font-medium text-red-800">Total Rejected</span>
-                        <span className="text-xl font-bold text-red-800">{qc?.['batches-rejected-count'] || 0}</span>
+                  {/* Quality Summary */}
+                  <Card className="shadow-sm border-gray-100">
+                    <CardHeader className="pb-3 border-b border-gray-100">
+                      <CardTitle className="text-sm font-semibold">Quality Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-3 space-y-2.5">
+                      {submissionsLoading ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-14 rounded-lg" />
+                          <Skeleton className="h-14 rounded-lg" />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
+                            <div>
+                              <p className="text-[10px] font-semibold text-red-600 uppercase tracking-wide">Rejected</p>
+                              <p className="text-xl font-bold text-red-800 leading-none mt-0.5">
+                                {qc?.['batches-rejected-count'] || 0}
+                                <span className="text-xs font-normal ml-1 text-red-500">batches</span>
+                              </p>
+                            </div>
+                            <AlertTriangle className="w-6 h-6 text-red-300" />
+                          </div>
+                          <div className="flex items-center justify-between bg-orange-50 border border-orange-100 rounded-lg px-3 py-2.5">
+                            <div>
+                              <p className="text-[10px] font-semibold text-orange-600 uppercase tracking-wide">Downgraded</p>
+                              <p className="text-xl font-bold text-orange-800 leading-none mt-0.5">
+                                {qc?.['batches-downgraded-count'] || 0}
+                                <span className="text-xs font-normal ml-1 text-orange-500">batches</span>
+                              </p>
+                            </div>
+                            <AlertTriangle className="w-6 h-6 text-orange-300" />
+                          </div>
+                          {qc?.['quality-exceptions-details'] && (
+                            <div className="mt-2 pt-2 border-t border-gray-100">
+                              <p className="text-[10px] text-gray-400 uppercase font-semibold mb-1">Exception Notes</p>
+                              <p className="text-xs text-gray-600 italic leading-relaxed">
+                                "{qc['quality-exceptions-details']}"
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Session Info */}
+                  <Card className="shadow-sm border-gray-100">
+                    <CardHeader className="pb-3 border-b border-gray-100">
+                      <CardTitle className="text-sm font-semibold">Session Info</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-3 space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">Session ID</span>
+                        <span className="font-mono font-medium text-gray-700">{sessionData.sessionId}</span>
                       </div>
-                      <div className="flex justify-between items-center bg-orange-50 p-3 rounded border border-orange-100">
-                        <span className="text-sm font-medium text-orange-800">Total Downgraded</span>
-                        <span className="text-xl font-bold text-orange-800">{qc?.['batches-downgraded-count'] || 0}</span>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">Hub</span>
+                        <span className="font-medium text-gray-700 capitalize">{sessionData.hub?.replaceAll('-', ' ')}</span>
                       </div>
-                      <Separator />
-                      <div className="space-y-2">
-                        <p className="text-xs text-gray-500 uppercase">Exceptions Reported</p>
-                        <p className="text-sm italic text-gray-700">"{qc?.['quality-exceptions-details'] || 'No exceptions reported.'}"</p>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">Opened</span>
+                        <span className="font-medium text-gray-700">{formatTs(sessionData.createdAt)}</span>
+                      </div>
+                      {sessionData.closedAt && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-400">Sealed</span>
+                          <span className="font-medium text-gray-700">{formatTs(sessionData.closedAt)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">Status</span>
+                        <Badge className={`text-[10px] px-2 h-5 ${sessionData.status === 'active'
+                            ? 'bg-green-100 text-green-700 border-green-200'
+                            : 'bg-gray-100 text-gray-500 border-gray-200'
+                          }`}>
+                          {sessionData.status === 'active' ? 'Active' : 'Sealed'}
+                        </Badge>
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* FINAL SEAL ACTION */}
+                  {/* Seal Action */}
                   {sessionData.status === 'active' && (
-                    <Card className="bg-blue-600 text-white shadow-xl shadow-blue-200">
-                      <CardHeader>
-                        <CardTitle className="text-white flex items-center gap-2">
-                          <Lock className="w-5 h-5" /> Finalize Session
-                        </CardTitle>
-                        <CardDescription className="text-blue-100">
-                          Seal all records and generate the final market day report.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
+                    <Card className="shadow-sm border-2 border-primary/20 bg-primary/5">
+                      <CardContent className="pt-5 pb-5 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <Lock className="w-4 h-4 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-sm text-gray-900">Finalize & Seal</p>
+                            <p className="text-xs text-gray-500 leading-relaxed mt-0.5">
+                              Lock all records and archive this market day. Cannot be undone.
+                            </p>
+                          </div>
+                        </div>
                         <Button
-                          className="w-full bg-white text-blue-600 hover:bg-blue-50 font-bold h-12"
+                          className="w-full font-semibold h-10 gap-2"
                           onClick={handleSealSession}
                           disabled={actionLoading}
                         >
-                          {actionLoading ? "Sealing..." : "SEAL & ARCHIVE SESSION"}
+                          <Lock className="w-3.5 h-3.5" />
+                          {actionLoading ? 'Sealingâ€¦' : 'Seal & Archive Session'}
                         </Button>
-                        <p className="text-[10px] mt-4 text-center text-blue-100 opacity-70">
-                          * This action cannot be undone. All supervisor fields will be locked.
-                        </p>
                       </CardContent>
                     </Card>
                   )}
                 </div>
               </div>
-            </>
+            </div>
           )}
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-function StatusCard({ title, sub, icon: IconComponent }) {
-  const isDone = !!sub;
-  return (
-    <Card className={`border-none shadow-sm ${isDone ? 'bg-green-50' : 'bg-gray-50'}`}>
-      <CardContent className="p-4 flex flex-col items-center gap-2">
-        <IconComponent className={`w-5 h-5 ${isDone ? 'text-green-600' : 'text-gray-300'}`} />
-        <p className={`text-[10px] font-bold uppercase tracking-wider ${isDone ? 'text-green-800' : 'text-gray-400'}`}>{title}</p>
-        <Badge variant={isDone ? 'default' : 'outline'} className={`text-[9px] ${isDone ? 'bg-green-600 hover:bg-green-600' : 'text-gray-400'}`}>
-          {isDone ? "Submitted" : "Pending"}
-        </Badge>
-      </CardContent>
-    </Card>
-  );
-}
-
-function TeamRow({ role, name, present }) {
-  return (
-    <div className="flex items-center justify-between group">
-      <div className="flex flex-col">
-        <span className="text-[10px] text-gray-500 uppercase font-semibold">{role}</span>
-        <span className="text-sm font-medium">{name || '---'}</span>
-      </div>
-      {present ? (
-        <Badge className="bg-green-100 text-green-700 border-none group-hover:px-4 transition-all">Present</Badge>
-      ) : (
-        <Badge variant="outline" className="text-gray-300 border-gray-100">Absent</Badge>
-      )}
-    </div>
-  );
-}
-
-function DiscrepancyRow({ label, val1, val2, unit, tolerance = 0 }) {
-  const diff = Math.abs(val1 - val2);
-  const isError = diff > tolerance;
-  
-  return (
-    <div className={`flex items-center justify-between p-3 rounded-md border ${isError ? 'bg-red-50 border-red-100' : 'bg-white border-gray-100'}`}>
-       <span className="text-sm font-medium text-gray-700">{label}</span>
-       <div className="flex items-center gap-2">
-          <div className="flex flex-col items-end">
-             <div className="flex gap-2 text-xs">
-                <span className="text-gray-500">{val1}</span>
-                <span className="text-gray-300">|</span>
-                <span className="text-gray-500">{val2}</span>
-             </div>
-             {isError ? (
-               <span className="text-[10px] font-bold text-red-600 flex items-center gap-1">
-                 <AlertTriangle className="w-2.5 h-2.5" /> Discrepancy: {diff} {unit}
-               </span>
-             ) : (
-               <span className="text-[10px] font-bold text-green-600 flex items-center gap-1">
-                 <CheckCircle2 className="w-2.5 h-2.5" /> Matched
-               </span>
-             ) }
-          </div>
-       </div>
     </div>
   );
 }

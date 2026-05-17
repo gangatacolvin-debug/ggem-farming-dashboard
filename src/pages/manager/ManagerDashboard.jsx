@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  AlertTriangle,
   TrendingUp,
   Calendar,
   ArrowUpRight,
@@ -19,6 +20,12 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
 import {
   BarChart,
   Bar,
@@ -29,6 +36,7 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
+import { normalizeDepartment } from '@/lib/departmentNormalize';
 
 export default function ManagerDashboard() {
   const { currentUser, userDepartment, loading: authLoading } = useAuth();
@@ -45,6 +53,14 @@ export default function ManagerDashboard() {
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState([]);
 
+  // Flag Panel State
+  const [flags, setFlags] = useState([]);
+  const [selectedFlag, setSelectedFlag] = useState(null);
+  const [isFlagDialogOpen, setIsFlagDialogOpen] = useState(false);
+  const [actionType, setActionType] = useState('');
+  const [actionNotes, setActionNotes] = useState('');
+  const [flagActionLoading, setFlagActionLoading] = useState(false);
+
   useEffect(() => {
     if (authLoading) return;
 
@@ -55,10 +71,12 @@ export default function ManagerDashboard() {
 
     setLoading(true);
 
+    const normalizedDept = normalizeDepartment(userDepartment);
+
     // Fetch all tasks for this department
     const tasksQuery = query(
       collection(db, 'tasks'),
-      where('department', '==', userDepartment)
+      where('department', '==', normalizedDept)
     );
 
     const unsubscribe = onSnapshot(tasksQuery, (snapshot) => {
@@ -71,10 +89,11 @@ export default function ManagerDashboard() {
       const newStats = {
         totalTasks: tasks.length,
         activeTasks: tasks.filter(t => t.status === 'in-progress').length,
-        completedTasks: tasks.filter(t => t.status === 'completed').length,
-        pendingTasks: tasks.filter(t => t.status === 'pending').length,
+        completedTasks: tasks.filter(t => t.status === 'completed' || t.status === 'approved').length,
+        // Only count tasks that have a submissionId (truly submitted) as pending approvals
+        pendingTasks: tasks.filter(t => t.status === 'pending' && t.submissionId).length,
         totalSupervisors: 0, // Will fetch separately
-        pendingApprovals: tasks.filter(t => t.status === 'pending').length
+        pendingApprovals: tasks.filter(t => t.status === 'pending' && t.submissionId).length
       };
 
       setStats(newStats);
@@ -119,7 +138,7 @@ export default function ManagerDashboard() {
       try {
         const supervisorsQuery = query(
           collection(db, 'users'),
-          where('department', '==', userDepartment),
+          where('department', '==', normalizedDept),
           where('role', '==', 'supervisor')
         );
         const snapshot = await getDocs(supervisorsQuery);
@@ -131,7 +150,28 @@ export default function ManagerDashboard() {
 
     fetchSupervisors();
 
-    return () => unsubscribe();
+    // Fetch active flags for Real-Time Panel
+    // NOTE: Only filter by department to avoid composite index requirement.
+    // Status filtering is done client-side.
+    const flagsQuery = query(
+      collection(db, 'flags'),
+      where('department', '==', normalizedDept)
+    );
+    const flagsUnsubscribe = onSnapshot(flagsQuery, (snapshot) => {
+      const activeStatuses = ['open', 'acknowledged', 'action-taken'];
+      const flagsData = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(f => activeStatuses.includes(f.status));
+      flagsData.sort((a, b) => (b.triggeredAt?.toMillis?.() || 0) - (a.triggeredAt?.toMillis?.() || 0));
+      setFlags(flagsData);
+    }, (err) => {
+      console.error('Flags snapshot error:', err);
+    });
+
+    return () => {
+      unsubscribe();
+      flagsUnsubscribe();
+    };
   }, [currentUser, userDepartment, authLoading]);
 
   const getStatusColor = (status) => {
@@ -140,6 +180,69 @@ export default function ManagerDashboard() {
       case 'in-progress': return 'bg-blue-500 hover:bg-blue-600';
       case 'pending': return 'bg-orange-500 hover:bg-orange-600';
       default: return 'bg-gray-500 hover:bg-gray-600';
+    }
+  };
+
+  const handleFlagAction = async (actionStage) => {
+    if (!selectedFlag) return;
+    setFlagActionLoading(true);
+    const flagRef = doc(db, 'flags', selectedFlag.id);
+    const nowMillis = Date.now();
+    const triggeredMillis = selectedFlag.triggeredAt?.toMillis?.() || nowMillis;
+
+    try {
+      if (actionStage === 'acknowledge') {
+        await updateDoc(flagRef, {
+          status: 'acknowledged',
+          acknowledgedAt: serverTimestamp(),
+          acknowledgedBy: currentUser.uid,
+          acknowledgedByName: currentUser.displayName || currentUser.email || 'Manager',
+          responseTimeSeconds: Math.floor((nowMillis - triggeredMillis) / 1000)
+        });
+      } else if (actionStage === 'action-taken') {
+        if (!actionType || !actionNotes) throw new Error("Action type and notes required");
+        await updateDoc(flagRef, {
+          status: 'action-taken',
+          actionTakenAt: serverTimestamp(),
+          actionTakenBy: currentUser.uid,
+          actionTakenByName: currentUser.displayName || currentUser.email || 'Manager',
+          actionType: actionType,
+          actionNotes: actionNotes
+        });
+      } else if (actionStage === 'resolve') {
+        if (!actionNotes) throw new Error("Resolution notes required");
+        await updateDoc(flagRef, {
+          status: 'resolved',
+          resolvedAt: serverTimestamp(),
+          resolvedBy: currentUser.uid,
+          resolvedByName: currentUser.displayName || currentUser.email || 'Manager',
+          resolutionNotes: actionNotes,
+          resolutionTimeSeconds: Math.floor((nowMillis - triggeredMillis) / 1000)
+        });
+        setIsFlagDialogOpen(false);
+      } else if (actionStage === 'escalate') {
+        if (!actionNotes) throw new Error("Escalation reason required");
+        await updateDoc(flagRef, {
+          status: 'escalated',
+          escalatedAt: serverTimestamp(),
+          escalatedBy: currentUser.uid,
+          escalatedByName: currentUser.displayName || currentUser.email || 'Manager',
+          escalatedTo: 'leadership',
+          escalationReason: actionNotes
+        });
+        setIsFlagDialogOpen(false);
+      }
+      
+      if (['acknowledge', 'action-taken'].includes(actionStage)) {
+         setSelectedFlag({...selectedFlag, status: actionStage});
+         setActionType('');
+         setActionNotes('');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update flag');
+    } finally {
+      setFlagActionLoading(false);
     }
   };
 
@@ -191,6 +294,42 @@ export default function ManagerDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Real-Time Flags Panel */}
+      {flags.length > 0 && (
+        <Card className="border-red-200 bg-red-50/10">
+          <CardHeader className="pb-3 border-b bg-white rounded-t-lg flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              <CardTitle className="text-red-700">Active Alerts & Flags ({flags.length})</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-gray-50/50">
+            {flags.map(flag => (
+              <div 
+                key={flag.id} 
+                onClick={() => { setSelectedFlag(flag); setIsFlagDialogOpen(true); setActionType(''); setActionNotes(''); }}
+                className={`p-4 rounded-lg border cursor-pointer hover:shadow-md transition-all ${
+                  flag.severity === 'critical' ? 'bg-red-50 border-red-200' :
+                  flag.severity === 'warning' ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'
+                } ${flag.status === 'open' && flag.severity === 'critical' ? 'animate-pulse' : ''}`}
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <Badge variant={flag.status === 'open' ? 'destructive' : 'secondary'} className="uppercase text-[10px]">
+                    {flag.status}
+                  </Badge>
+                  <span className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {flag.triggeredAt ? Math.floor((Date.now() - flag.triggeredAt.toMillis()) / 60000) : 0}m ago
+                  </span>
+                </div>
+                <h4 className="font-bold text-gray-900 leading-tight mb-1">{flag.fieldLabel}</h4>
+                <p className="text-xs text-gray-600 truncate">{flag.supervisorName} • {flag.checklistType}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Primary Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -302,7 +441,7 @@ export default function ManagerDashboard() {
                   No recent activity
                 </div>
               ) : (
-                recentTasks.map((task, i) => (
+                recentTasks.map((task) => (
                   <div key={task.id} className="flex items-start space-x-4">
                     <div className={`mt-1 h-2 w-2 rounded-full ${task.status === 'completed' ? 'bg-green-500' :
                       task.status === 'in-progress' ? 'bg-blue-500' : 'bg-gray-300'
@@ -357,6 +496,134 @@ export default function ManagerDashboard() {
           </div>
         </Button>
       </div>
+
+      {/* Flag Dialog */}
+      <Dialog open={isFlagDialogOpen} onOpenChange={setIsFlagDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              Flag Audit Trail
+            </DialogTitle>
+            <DialogDescription>
+              Manage and track actions for this active alert.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedFlag && (
+            <div className="space-y-4 py-2">
+              <div className="bg-gray-50 p-3 rounded-lg border">
+                <h3 className="font-bold">{selectedFlag.fieldLabel}</h3>
+                <p className="text-sm text-gray-600">{selectedFlag.message}</p>
+                <div className="mt-2 text-xs text-gray-500 flex gap-4">
+                  <span><strong>By:</strong> {selectedFlag.supervisorName}</span>
+                  <span><strong>Checklist:</strong> <span className="capitalize">{selectedFlag.checklistType}</span></span>
+                </div>
+              </div>
+
+              {/* Audit Trail UI */}
+              <div className="space-y-3 border-l-2 border-gray-200 pl-4 ml-2">
+                <div className="relative">
+                  <div className="absolute w-2 h-2 bg-gray-400 rounded-full -left-[21px] top-1.5 border border-white"></div>
+                  <p className="text-xs font-semibold text-gray-600">Triggered</p>
+                  <p className="text-xs text-gray-500">{selectedFlag.triggeredAt?.toDate()?.toLocaleString()}</p>
+                </div>
+                
+                {selectedFlag.acknowledgedAt && (
+                  <div className="relative">
+                    <div className="absolute w-2 h-2 bg-blue-500 rounded-full -left-[21px] top-1.5 border border-white"></div>
+                    <p className="text-xs font-semibold text-gray-600">Acknowledged by {selectedFlag.acknowledgedByName}</p>
+                    <p className="text-xs text-gray-500">{selectedFlag.acknowledgedAt?.toDate()?.toLocaleString()}</p>
+                  </div>
+                )}
+
+                {selectedFlag.actionTakenAt && (
+                  <div className="relative">
+                    <div className="absolute w-2 h-2 bg-purple-500 rounded-full -left-[21px] top-1.5 border border-white"></div>
+                    <p className="text-xs font-semibold text-gray-600">Action: {selectedFlag.actionType}</p>
+                    <p className="text-xs text-gray-500 italic">"{selectedFlag.actionNotes}"</p>
+                    <p className="text-xs text-gray-400">{selectedFlag.actionTakenAt?.toDate()?.toLocaleString()} by {selectedFlag.actionTakenByName}</p>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Action Controls */}
+              {selectedFlag.status === 'open' && (
+                <Button className="w-full" onClick={() => handleFlagAction('acknowledge')} disabled={flagActionLoading}>
+                  {flagActionLoading ? 'Processing...' : 'Acknowledge Flag'}
+                </Button>
+              )}
+
+              {selectedFlag.status === 'acknowledged' && (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label>Action Type</Label>
+                    <Select value={actionType} onValueChange={setActionType}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select action taken..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Stopped the session">Stopped the session</SelectItem>
+                        <SelectItem value="Instructed supervisor to continue with caution">Instructed supervisor to continue with caution</SelectItem>
+                        <SelectItem value="Dispatched support to location">Dispatched support to location</SelectItem>
+                        <SelectItem value="Logged for end of day review">Logged for end of day review</SelectItem>
+                        <SelectItem value="No action required — false alarm">No action required — false alarm</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Action Notes</Label>
+                    <Textarea 
+                      placeholder="Detail the action taken..." 
+                      value={actionNotes}
+                      onChange={e => setActionNotes(e.target.value)}
+                    />
+                  </div>
+                  <Button 
+                    className="w-full" 
+                    onClick={() => handleFlagAction('action-taken')} 
+                    disabled={!actionType || !actionNotes || flagActionLoading}
+                  >
+                    {flagActionLoading ? 'Processing...' : 'Record Action'}
+                  </Button>
+                </div>
+              )}
+
+              {selectedFlag.status === 'action-taken' && (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label>Resolution or Escalation Notes</Label>
+                    <Textarea 
+                      placeholder="Explain how this was resolved, or why it is being escalated..." 
+                      value={actionNotes}
+                      onChange={e => setActionNotes(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline"
+                      className="flex-1 text-orange-600 border-orange-200" 
+                      onClick={() => handleFlagAction('escalate')} 
+                      disabled={!actionNotes || flagActionLoading}
+                    >
+                      {flagActionLoading ? 'Processing...' : 'Escalate'}
+                    </Button>
+                    <Button 
+                      className="flex-1 bg-green-600 hover:bg-green-700" 
+                      onClick={() => handleFlagAction('resolve')} 
+                      disabled={!actionNotes || flagActionLoading}
+                    >
+                      {flagActionLoading ? 'Processing...' : 'Mark Resolved'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,6 +1,53 @@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { formatAggregationHubDisplay } from './aggregationSessions';
+
+const WEIGHING_LOG_HEADERS = [
+    '#',
+    'Club / Group',
+    'Farmer Name',
+    'Farmer Type',
+    'Variety',
+    'Grade',
+    'Weight (kg)',
+    'Price/kg (MWK)',
+    'Gross (MWK)',
+    'Farmer Verified',
+    'Receipt Issued',
+];
+
+function weighingLogRow(log, index) {
+    return [
+        index + 1,
+        log.clubGroupName || '',
+        log.farmerName || '',
+        log.farmerType || '',
+        log.variety || '',
+        log.grade || '',
+        Number(log.weightKg) || 0,
+        Number(log.pricePerKg) || 0,
+        Number(log.grossAmount) || 0,
+        log.farmerVerified ?? '',
+        log.receiptIssued ?? '',
+    ];
+}
+
+function applyWeighingSheetFormatting(ws) {
+    ws['!cols'] = [
+        { wch: 5 },
+        { wch: 18 },
+        { wch: 22 },
+        { wch: 20 },
+        { wch: 14 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 14 },
+    ];
+}
 
 /**
  * Professional Export Service for Aggregation Sessions
@@ -182,10 +229,14 @@ export const ExportService = {
             const summaryWS = XLSX.utils.aoa_to_sheet(summaryData);
             XLSX.utils.book_append_sheet(wb, summaryWS, "Summary");
 
-            // 2. Weighing Logs Sheet
-            if (weighing && weighing['farmer-weighing-logs']) {
-                const weighingWS = XLSX.utils.json_to_sheet(weighing['farmer-weighing-logs']);
-                XLSX.utils.book_append_sheet(wb, weighingWS, "Weighing Logs");
+            // 2. Weighing Logs Sheet (formatted)
+            const logs =
+                weighing?.['farmer-weighing-logs'] ||
+                weighing?.farmerWeighingLogs ||
+                [];
+            if (logs.length) {
+                const weighingWS = buildWeighingLogsSheet(sessionData, logs);
+                XLSX.utils.book_append_sheet(wb, weighingWS, 'Weighing Logs');
             }
 
             // 3. QC Table Sheet
@@ -199,5 +250,72 @@ export const ExportService = {
             console.error("Excel generation failed:", error);
             alert("Error generating Excel: " + error.message);
         }
-    }
+    },
+
+    /**
+     * Standalone Excel export for farmer weighing logs (all rows, formatted).
+     */
+    generateWeighingLogsExcel: (sessionData, logs) => {
+        try {
+            if (!sessionData?.sessionId) {
+                alert('Session information is required to export.');
+                return;
+            }
+            const list = Array.isArray(logs) ? logs : [];
+            if (!list.length) {
+                alert('No weighing logs to export for this session.');
+                return;
+            }
+            const wb = XLSX.utils.book_new();
+            const ws = buildWeighingLogsSheet(sessionData, list);
+            XLSX.utils.book_append_sheet(wb, ws, 'Weighing Logs');
+            const hubSlug = (sessionData.hub || 'hub').replace(/\s+/g, '_');
+            XLSX.writeFile(wb, `GGEM_WeighingLog_${hubSlug}_${sessionData.sessionId}.xlsx`);
+        } catch (error) {
+            console.error('Weighing log Excel export failed:', error);
+            alert('Error generating Excel: ' + error.message);
+        }
+    },
 };
+
+function buildWeighingLogsSheet(sessionData, logs) {
+    const hub = formatAggregationHubDisplay(sessionData.hub) || sessionData.hub || '';
+    let totalWeight = 0;
+    let totalGross = 0;
+
+    const rows = [
+        ['GGEM — Farmer Weighing Log'],
+        ['Session ID', sessionData.sessionId],
+        ['Hub', hub],
+        ['Status', sessionData.status || ''],
+        ['Exported', new Date().toLocaleString()],
+        [],
+        WEIGHING_LOG_HEADERS,
+    ];
+
+    logs.forEach((log, i) => {
+        const row = weighingLogRow(log, i);
+        rows.push(row);
+        totalWeight += row[6];
+        totalGross += row[8];
+    });
+
+    rows.push([]);
+    rows.push([
+        'TOTALS',
+        '',
+        `${logs.length} farmers`,
+        '',
+        '',
+        '',
+        totalWeight,
+        '',
+        totalGross,
+        '',
+        '',
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    applyWeighingSheetFormatting(ws);
+    return ws;
+}

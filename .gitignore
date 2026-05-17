@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 .agent/*
+
+# Environment variables — never commit real credentials
+.env
+.env.local
+.env.*.local
